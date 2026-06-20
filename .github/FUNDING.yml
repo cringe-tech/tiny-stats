@@ -1,4 +1,4 @@
 ko_fi: cringetech
+patreon: cringetech
 custom:
-  - "https://nowpayments.io/donation?api_key=857516d3-5dfc-47f3-a1bb-1a4c01b3f4be"
-  - "https://www.patreon.com/cw/cringetech"
+  - ["https://nowpayments.io/donation?api_key=857516d3-5dfc-47f3-a1bb-1a4c01b3f4be", nowpayments]
