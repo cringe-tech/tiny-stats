@@ -38,9 +38,12 @@ if [[ -n "${TINYSTATS_BUILD:-}" ]]; then
     plutil -replace CFBundleVersion -string "$TINYSTATS_BUILD" "$CONTENTS/Info.plist"
 fi
 
-# SwiftPM resource bundle (app logo) so Bundle.module resolves inside the .app.
+# SwiftPM resource images (donate buttons, logo) → Contents/Resources, where Bundle.main
+# finds them at runtime (see SettingsView.resourceImage). Kept out of the SwiftPM .bundle on
+# purpose: that bundle's generated accessor expects a path that doesn't exist in a hand-
+# assembled .app and would fatalError.
 if [ -d "$BIN_DIR/TinyStats_TinyStats.bundle" ]; then
-    cp -R "$BIN_DIR/TinyStats_TinyStats.bundle" "$CONTENTS/MacOS/"
+    cp "$BIN_DIR/TinyStats_TinyStats.bundle/"*.png "$CONTENTS/Resources/" 2>/dev/null || true
 fi
 
 # Ad-hoc signature so the app launches without a Developer ID and TCC stays happy.

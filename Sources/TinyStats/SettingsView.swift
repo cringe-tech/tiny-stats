@@ -268,17 +268,23 @@ struct SettingsView: View {
         }
     }
 
+    /// Loads a bundled PNG. In the packaged .app the images sit in Contents/Resources, so
+    /// `Bundle.main` finds them and we never touch `Bundle.module` — whose generated accessor
+    /// fatalErrors when the SwiftPM bundle isn't where it expects. The `Bundle.module` fallback
+    /// only runs under `swift run`, where it resolves against the build directory.
+    private static func resourceImage(_ name: String) -> NSImage? {
+        let url = Bundle.main.url(forResource: name, withExtension: "png")
+            ?? Bundle.module.url(forResource: name, withExtension: "png")
+        return url.flatMap(NSImage.init(contentsOf:))
+    }
+
     private static func nowPaymentsButton(for scheme: ColorScheme) -> NSImage? {
         // Match the theme: dark button in dark mode, light button in light mode.
-        let name = scheme == .dark ? "nowpayments-black" : "nowpayments-white"
-        guard let url = Bundle.module.url(forResource: name, withExtension: "png") else { return nil }
-        return NSImage(contentsOf: url)
+        resourceImage(scheme == .dark ? "nowpayments-black" : "nowpayments-white")
     }
 
     private static func kofiButton(for scheme: ColorScheme) -> NSImage? {
-        let name = scheme == .dark ? "kofi-dark" : "kofi-beige"
-        guard let url = Bundle.module.url(forResource: name, withExtension: "png") else { return nil }
-        return NSImage(contentsOf: url)
+        resourceImage(scheme == .dark ? "kofi-dark" : "kofi-beige")
     }
 
     private var appVersion: String {
@@ -303,10 +309,7 @@ struct SettingsView: View {
         NSWorkspace.shared.activateFileViewerSelecting([Log.fileURL])
     }
 
-    private static let logo: NSImage? = {
-        guard let url = Bundle.module.url(forResource: "tinystats", withExtension: "png") else { return nil }
-        return NSImage(contentsOf: url)
-    }()
+    private static let logo: NSImage? = resourceImage("tinystats")
 }
 
 /// Gives the Settings window a Dock icon + cmd-tab presence while it's open, then removes it
