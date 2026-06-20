@@ -7,7 +7,7 @@ cask "tinystats" do
   desc "Tiny read-only menu bar system monitor"
   homepage "https://github.com/cringe-tech/tiny-stats"
 
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "TinyStats.app"
 

@@ -68,11 +68,15 @@ light on CPU and battery. Open source (MIT).
 ## Install
 
 Download **[TinyStats.dmg](https://github.com/cringe-tech/tiny-stats/releases/latest/download/TinyStats.dmg)**
-and drag it to Applications. Or with Homebrew:
+and drag it to Applications. Or with Homebrew, from our tap
+[`cringe-tech/homebrew-apps`](https://github.com/cringe-tech/homebrew-apps):
 
 ```sh
-brew install --cask cringe-tech/apps/tinystats
+brew tap cringe-tech/apps
+brew install --cask tinystats
 ```
+
+(`brew install --cask cringe-tech/apps/tinystats` taps and installs in one step.)
 
 The build is ad-hoc signed (not yet notarized): on a plain double-click Gatekeeper will warn —
 right-click → **Open**, or System Settings → Privacy & Security → **Open Anyway**. Homebrew
