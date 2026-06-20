@@ -257,8 +257,13 @@ struct SettingsView: View {
                         .controlSize(.small)
                 }
             case .idle, .failed:
-                // Temporarily hidden: "Check for Updates" button and the update-failed note.
-                EmptyView()
+                VStack(spacing: 2) {
+                    Button(Loc.t(.checkForUpdates)) { state.checkForUpdates(force: true) }
+                        .controlSize(.small)
+                    if state.updateStatus == .failed {
+                        Text(Loc.t(.updateFailed)).font(.system(.caption2)).foregroundStyle(.tertiary)
+                    }
+                }
             }
         }
     }
