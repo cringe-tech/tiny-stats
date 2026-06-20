@@ -1,0 +1,17 @@
+tiny-stats — prior-art attribution
+==================================
+
+The SMC (System Management Controller) access protocol used in Sources/CSMC derives from
+Apple's open-source PowerManagement `smc.c` and from well-known community ports. These
+projects were valuable references for the SMC interface:
+
+- beltex/SMCKit        — https://github.com/beltex/SMCKit        (MIT)
+- dkorunic/iSMC        — https://github.com/dkorunic/iSMC        (MIT)
+
+The SMC struct layout and selector constants in Sources/CSMC are the documented kernel
+interface; no source files were copied verbatim.
+
+Sensor naming is independent: SMC keys are grouped into components by prefix
+(`Sources/SMCKit/SensorClassifier.swift`) and individual sensors are shown by their raw SMC
+key; a small set of power-rail labels (`Sources/SMCKit/PowerNames.swift`) is written for this
+project. No sensor-name tables are copied from other projects.

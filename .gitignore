@@ -1,0 +1,8 @@
+.build/
+.swiftpm/
+*.xcodeproj
+TinyStats.app/
+dist/
+*.dmg
+.DS_Store
+.claude/

@@ -1,0 +1,64 @@
+name: Release
+
+# Cut a release by pushing a tag:  git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build DMG
+        env:
+          TINYSTATS_VERSION: ${{ steps.ver.outputs.version }}
+          TINYSTATS_BUILD: ${{ github.run_number }}
+        run: Scripts/dmg.sh
+
+      - name: Checksum
+        id: sum
+        run: |
+          SHA=$(shasum -a 256 dist/TinyStats.dmg | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "### TinyStats ${{ steps.ver.outputs.version }}"
+            echo ""
+            echo "\`sha256: $SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release create "$GITHUB_REF_NAME" dist/TinyStats.dmg \
+                 --title "TinyStats ${{ steps.ver.outputs.version }}" \
+                 --generate-notes; then
+            gh release upload "$GITHUB_REF_NAME" dist/TinyStats.dmg --clobber
+          fi
+
+      # Bumps the Homebrew cask in the tap repo. Skipped until the tap exists and a
+      # HOMEBREW_TAP_TOKEN secret (a PAT with repo scope on the tap) is configured.
+      - name: Bump Homebrew cask
+        if: ${{ vars.HOMEBREW_TAP_REPO != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP: ${{ vars.HOMEBREW_TAP_REPO }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          SHA: ${{ steps.sum.outputs.sha256 }}
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${TAP}.git" tap
+          Scripts/update-cask.sh "$VERSION" "$SHA" tap/Casks/tinystats.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "tinystats $VERSION"
+          git push

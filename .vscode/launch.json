@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:tinystats}",
+            "name": "Debug TinyStatsSelfTest",
+            "target": "TinyStatsSelfTest",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug TinyStatsSelfTest"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:tinystats}",
+            "name": "Release TinyStatsSelfTest",
+            "target": "TinyStatsSelfTest",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release TinyStatsSelfTest"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:tinystats}",
+            "name": "Debug TinyStats",
+            "target": "TinyStats",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug TinyStats"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:tinystats}",
+            "name": "Release TinyStats",
+            "target": "TinyStats",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release TinyStats"
+        }
+    ]
+}
