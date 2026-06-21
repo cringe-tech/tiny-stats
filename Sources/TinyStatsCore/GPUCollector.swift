@@ -4,11 +4,22 @@ import IOKit
 /// GPU utilization from the accelerator's `PerformanceStatistics` dictionary.
 /// Works on Apple Silicon, where the integrated GPU reports `Device Utilization %`.
 final class GPUCollector {
+    private var lastTime: Date?
+    private var lastUsage = GPUUsage()
+
     func sample() -> GPUUsage {
+        // A forced refresh (e.g. opening the popover) can land between the accelerator's
+        // own counter updates and read back as 0%. Hold the last value when sampled below
+        // the minimum window so the cell doesn't flash to 0.
+        let now = Date()
+        if let lastTime, now.timeIntervalSince(lastTime) < MetricRate.minSampleInterval {
+            return lastUsage
+        }
+
         var iterator: io_iterator_t = 0
         guard IOServiceGetMatchingServices(
             kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &iterator
-        ) == KERN_SUCCESS else { return GPUUsage() }
+        ) == KERN_SUCCESS else { return lastUsage }
         defer { IOObjectRelease(iterator) }
 
         var best = 0.0
@@ -30,6 +41,9 @@ final class GPUCollector {
                 }
             }
         }
-        return GPUUsage(utilization: min(1, best / 100))
+        let usage = GPUUsage(utilization: min(1, best / 100))
+        lastTime = now
+        lastUsage = usage
+        return usage
     }
 }
