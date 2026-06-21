@@ -203,13 +203,16 @@ struct SettingsView: View {
 
     private var aboutContent: some View {
         VStack(spacing: 14) {
+            // Two equal columns: the left badge hugs the centre (trailing), the right one
+            // hugs it too (leading). This keeps both buttons anchored either side of the
+            // midline so they don't drift when localized labels change the panel width.
             HStack(alignment: .center, spacing: 12) {
-                if let button = Self.nowPaymentsButton(for: colorScheme) {
-                    DonateBadge(image: button, url: Self.donationURL, help: Loc.t(.donate))
-                }
                 if let button = Self.kofiButton(for: colorScheme) {
                     DonateBadge(image: button, url: Self.kofiURL, help: "Ko-fi", secretHint: Loc.t(.switchTabs))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
+                CryptoDonateButton(url: Self.donationURL, help: Loc.t(.donate))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .zIndex(1)   // let the Ko-fi easter-egg pill float above the rows below
             VStack(alignment: .center, spacing: 2) {
@@ -252,9 +255,17 @@ struct SettingsView: View {
                 VStack(spacing: 4) {
                     Text(Loc.t(.updateAvailable, "v\(version)"))
                         .font(.system(.subheadline, weight: .medium))
-                    Link(Loc.t(.downloadUpdate), destination: url)
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
+                    // Homebrew-managed copies update through brew, not the raw .dmg, so an
+                    // overwriting drag-install doesn't fight the cask's bookkeeping.
+                    if UpdateChecker.installedViaHomebrew {
+                        Button(Loc.t(.updateViaHomebrew)) { state.updateViaHomebrew() }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                    } else {
+                        Link(Loc.t(.downloadUpdate), destination: url)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                    }
                 }
             case .idle, .failed:
                 VStack(spacing: 2) {
@@ -928,6 +939,55 @@ private struct HoverLink: View {
 }
 
 /// A donation badge sized into a uniform slot (so the two buttons, which have different native
+/// Text counterpart to the Ko-fi image badge: a bordered "Support with crypto" pill sized to
+/// match `DonateBadge` (168×40) so the two donate columns stay visually balanced.
+private struct CryptoDonateButton: View {
+    let url: URL
+    let help: String
+    @State private var hovering = false
+    @Environment(\.openURL) private var openURL
+    @Environment(\.colorScheme) private var colorScheme
+
+    // Ko-fi's beige pill / dark border, mirrored so the crypto button reads as its twin.
+    private var fill: Color {
+        colorScheme == .dark ? Color(red: 0.16, green: 0.16, blue: 0.17)
+                             : Color(red: 0.97, green: 0.94, blue: 0.88)
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "bitcoinsign.circle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.orange)
+            Text("Support w/ crypto")
+                .font(.system(size: 14, weight: .regular, design: .rounded))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .padding(.horizontal, 13)
+        // Inner pill matches the Ko-fi image's rendered height (≈34), centred inside the same
+        // 168×40 column box so both donate buttons line up.
+        .frame(height: 34)
+        .background(fill, in: Self.shape)
+        .overlay(Self.shape.strokeBorder(.primary.opacity(0.85), lineWidth: 1.5))
+        .frame(width: 168, height: 40)
+        // Scale/shadow on hover, mirroring DonateBadge's lift.
+        .scaleEffect(hovering ? 1.04 : 1)
+        .shadow(color: .black.opacity(hovering ? 0.2 : 0), radius: hovering ? 6 : 0, y: 2)
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .contentShape(Self.shape)
+        .handInteraction(hovered: $hovering) { openURL(url) }
+        .help(help)
+        .accessibilityLabel(help)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { openURL(url) }
+    }
+
+    // Rounded-rect (not a full capsule) to match the Ko-fi badge's corner radius.
+    private static let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+}
+
 /// aspect ratios, read as a tidy equal-width pair) that lifts on hover.
 private struct DonateBadge: View {
     let image: NSImage
@@ -943,9 +1003,10 @@ private struct DonateBadge: View {
         ZStack {
             if let secretHint {
                 secretPill(secretHint)
-                    // The pill drops out from under the badge's bottom-right; the keycaps
-                    // inside then pop in one-by-one (see secretPill) for the playful reveal.
-                    .offset(x: hovering ? 44 : 24, y: hovering ? 40 : 24)
+                    // The pill drops out from under the badge's bottom-left (Ko-fi now sits in
+                    // the left column, so it peeks toward the panel edge, away from the crypto
+                    // button); the keycaps inside then pop in one-by-one for the playful reveal.
+                    .offset(x: hovering ? -36 : -20, y: hovering ? 46 : 28)
                     .opacity(hovering ? 1 : 0)
                     .animation(.easeOut(duration: 0.18), value: hovering)
                     .allowsHitTesting(false)
@@ -976,33 +1037,38 @@ private struct DonateBadge: View {
     private static let keyTilt: [Double] = [-6, 5, -4]
 
     private func secretPill(_ text: String) -> some View {
-        HStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { i in
-                Text("⌘\(i + 1)")
-                    .font(.system(.caption2, design: .rounded).weight(.heavy))
-                    .foregroundStyle(Self.keyColors[i])
-                    .padding(.horizontal, 5).padding(.vertical, 3)
-                    .background(Self.keyColors[i].opacity(0.18),
-                                in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .rotationEffect(.degrees(Self.keyTilt[i]))
-                    // Each key pops in a beat after the previous one.
-                    .scaleEffect(hovering ? 1 : 0.2, anchor: .bottom)
-                    .opacity(hovering ? 1 : 0)
-                    .offset(y: hovering ? 0 : 8)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.55)
-                        .delay(Double(i) * 0.09), value: hovering)
-            }
+        // Two rows — caption on top, keycaps below — so the pill stays narrow and doesn't
+        // spill past the panel edge regardless of how long the localized hint text is.
+        VStack(spacing: 5) {
             Text(text)
                 .font(.system(.caption2, design: .rounded).weight(.semibold))
                 .foregroundStyle(.secondary)
                 .opacity(hovering ? 1 : 0)
                 .animation(.easeOut(duration: 0.2).delay(0.3), value: hovering)
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { i in
+                    Text("⌘\(i + 1)")
+                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(Self.keyColors[i])
+                        .padding(.horizontal, 5).padding(.vertical, 3)
+                        .background(Self.keyColors[i].opacity(0.18),
+                                    in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .rotationEffect(.degrees(Self.keyTilt[i]))
+                        // Each key pops in a beat after the previous one.
+                        .scaleEffect(hovering ? 1 : 0.2, anchor: .bottom)
+                        .opacity(hovering ? 1 : 0)
+                        .offset(y: hovering ? 0 : 8)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.55)
+                            .delay(Double(i) * 0.09), value: hovering)
+                }
+            }
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(.thickMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 0.5))
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous)
+            .strokeBorder(.quaternary, lineWidth: 0.5))
         .shadow(color: .black.opacity(0.16), radius: 7, y: 3)
-        .rotationEffect(.degrees(-2))   // slightly hand-placed, indie feel
+        .rotationEffect(.degrees(3))   // slightly hand-placed, indie feel — leans right
         .fixedSize()
     }
 }

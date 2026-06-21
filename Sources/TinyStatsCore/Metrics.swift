@@ -1,6 +1,13 @@
 import Foundation
 import SMCKit
 
+/// Shared tuning for delta-based collectors (CPU, network, disk).
+enum MetricRate {
+    /// Minimum window between samples for a rate to be meaningful. Sub-threshold samples
+    /// (back-to-back forced refreshes) hold the previous value instead of collapsing to ~0.
+    static let minSampleInterval: TimeInterval = 0.5
+}
+
 public struct CPUUsage: Sendable, Equatable {
     public var system: Double = 0   // 0...1
     public var user: Double = 0     // 0...1

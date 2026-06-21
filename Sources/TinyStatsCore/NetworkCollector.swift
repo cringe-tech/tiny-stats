@@ -6,6 +6,7 @@ public final class NetworkCollector {
     private var lastIn: UInt64 = 0
     private var lastOut: UInt64 = 0
     private var lastTime: Date?
+    private var lastUsage = NetworkUsage()
 
     init() {}
 
@@ -24,12 +25,20 @@ public final class NetworkCollector {
     func sample() -> NetworkUsage {
         let (bytesIn, bytesOut) = Self.totalBytes()
         let now = Date()
-        defer { lastIn = bytesIn; lastOut = bytesOut; lastTime = now }
-        guard let lastTime else { return NetworkUsage() }
-        return Self.rate(
+        guard let lastTime else {
+            lastIn = bytesIn; lastOut = bytesOut; self.lastTime = now
+            return lastUsage
+        }
+        // A forced refresh (e.g. on popover open) can sample right after a tick; that window
+        // is too short to measure a rate and would collapse to ~0. Hold the last value and
+        // leave the baseline untouched so the next real tick differentiates over a full window.
+        let seconds = now.timeIntervalSince(lastTime)
+        guard seconds >= MetricRate.minSampleInterval else { return lastUsage }
+        let usage = Self.rate(
             previousIn: lastIn, previousOut: lastOut,
-            currentIn: bytesIn, currentOut: bytesOut,
-            seconds: now.timeIntervalSince(lastTime))
+            currentIn: bytesIn, currentOut: bytesOut, seconds: seconds)
+        lastIn = bytesIn; lastOut = bytesOut; self.lastTime = now; lastUsage = usage
+        return usage
     }
 
     /// Sums byte counters across physical interfaces, skipping loopback.

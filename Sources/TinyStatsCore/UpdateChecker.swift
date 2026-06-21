@@ -23,6 +23,28 @@ public enum UpdateChecker {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }
 
+    // MARK: Homebrew
+
+    /// Homebrew cask token and tap, used to build the upgrade command.
+    public static let caskToken = "tinystats"
+    public static let caskTap = "cringe-tech/apps"
+
+    /// Fully-qualified upgrade command — works whether or not the tap is already tapped.
+    public static var brewUpgradeCommand: String {
+        "brew upgrade --cask \(caskTap)/\(caskToken)"
+    }
+
+    /// True when this build is the Homebrew-cask copy: the cask keeps a `Caskroom/<token>`
+    /// directory under the brew prefix, and installs the app into `/Applications`. Requiring
+    /// both avoids treating a hand-placed copy as brew-managed just because the cask exists.
+    public static var installedViaHomebrew: Bool {
+        let fm = FileManager.default
+        let caskroomExists = ["/opt/homebrew", "/usr/local"].contains {
+            fm.fileExists(atPath: "\($0)/Caskroom/\(caskToken)")
+        }
+        return caskroomExists && Bundle.main.bundlePath.hasPrefix("/Applications/")
+    }
+
     /// Dotted version compare: true iff `a` is strictly newer than `b` (e.g. 0.10.0 > 0.9.0).
     public static func isNewer(_ a: String, than b: String) -> Bool {
         func parts(_ s: String) -> [Int] {

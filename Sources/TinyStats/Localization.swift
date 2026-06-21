@@ -52,7 +52,7 @@ enum LocKey: String {
     case fans, temperature, power, voltage, current
     case lastSpan, minutesShort, hourShort
     case donate
-    case checkForUpdates, checkingUpdates, upToDate, updateAvailable, downloadUpdate
+    case checkForUpdates, checkingUpdates, upToDate, updateAvailable, downloadUpdate, updateViaHomebrew
     case autoCheckUpdates, updateFailed
     case removeHint
     case reportIssue
@@ -118,7 +118,8 @@ enum Loc {
             .reportIssue: "Report a bug or idea",
             .checkForUpdates: "Check for updates", .checkingUpdates: "Checking for updates…",
             .upToDate: "TinyStats is up to date", .updateAvailable: "Update available: %@",
-            .downloadUpdate: "Download", .autoCheckUpdates: "Check for updates automatically",
+            .downloadUpdate: "Download", .updateViaHomebrew: "Update via Homebrew",
+            .autoCheckUpdates: "Check for updates automatically",
             .updateFailed: "Couldn’t check for updates",
             .removeHint: "Drag a cell here to remove it",
             .diagnostics: "Diagnostics", .exportLogs: "Export Logs…", .revealLogs: "Show in Finder",
@@ -166,7 +167,8 @@ enum Loc {
             .reportIssue: "Сообщить о баге или идее",
             .checkForUpdates: "Проверить обновления", .checkingUpdates: "Проверка обновлений…",
             .upToDate: "Установлена последняя версия", .updateAvailable: "Доступно обновление: %@",
-            .downloadUpdate: "Скачать", .autoCheckUpdates: "Проверять обновления автоматически",
+            .downloadUpdate: "Скачать", .updateViaHomebrew: "Обновить через Homebrew",
+            .autoCheckUpdates: "Проверять обновления автоматически",
             .updateFailed: "Не удалось проверить обновления",
             .removeHint: "Перетащите ячейку сюда, чтобы убрать",
             .diagnostics: "Диагностика", .exportLogs: "Экспорт логов…", .revealLogs: "Показать в Finder",
@@ -214,7 +216,8 @@ enum Loc {
             .reportIssue: "Signaler un bug ou une idée",
             .checkForUpdates: "Rechercher des mises à jour", .checkingUpdates: "Recherche de mises à jour…",
             .upToDate: "TinyStats est à jour", .updateAvailable: "Mise à jour disponible : %@",
-            .downloadUpdate: "Télécharger", .autoCheckUpdates: "Rechercher les mises à jour automatiquement",
+            .downloadUpdate: "Télécharger", .updateViaHomebrew: "Mettre à jour via Homebrew",
+            .autoCheckUpdates: "Rechercher les mises à jour automatiquement",
             .updateFailed: "Échec de la recherche de mises à jour",
             .removeHint: "Glissez une cellule ici pour la retirer",
             .diagnostics: "Diagnostic", .exportLogs: "Exporter les journaux…", .revealLogs: "Afficher dans le Finder",
@@ -262,7 +265,8 @@ enum Loc {
             .reportIssue: "Fehler oder Idee melden",
             .checkForUpdates: "Nach Updates suchen", .checkingUpdates: "Suche nach Updates…",
             .upToDate: "TinyStats ist aktuell", .updateAvailable: "Update verfügbar: %@",
-            .downloadUpdate: "Laden", .autoCheckUpdates: "Automatisch nach Updates suchen",
+            .downloadUpdate: "Laden", .updateViaHomebrew: "Über Homebrew aktualisieren",
+            .autoCheckUpdates: "Automatisch nach Updates suchen",
             .updateFailed: "Suche nach Updates fehlgeschlagen",
             .removeHint: "Zelle hierher ziehen, um sie zu entfernen",
             .diagnostics: "Diagnose", .exportLogs: "Protokolle exportieren…", .revealLogs: "Im Finder zeigen",
@@ -310,7 +314,8 @@ enum Loc {
             .reportIssue: "버그 또는 제안 보내기",
             .checkForUpdates: "업데이트 확인", .checkingUpdates: "업데이트 확인 중…",
             .upToDate: "최신 버전입니다", .updateAvailable: "업데이트 있음: %@",
-            .downloadUpdate: "다운로드", .autoCheckUpdates: "자동으로 업데이트 확인",
+            .downloadUpdate: "다운로드", .updateViaHomebrew: "Homebrew로 업데이트",
+            .autoCheckUpdates: "자동으로 업데이트 확인",
             .updateFailed: "업데이트를 확인할 수 없습니다",
             .removeHint: "셀을 여기로 끌어 제거",
             .diagnostics: "진단", .exportLogs: "로그 내보내기…", .revealLogs: "Finder에서 보기",
@@ -358,7 +363,8 @@ enum Loc {
             .reportIssue: "バグ・要望を報告",
             .checkForUpdates: "アップデートを確認", .checkingUpdates: "アップデートを確認中…",
             .upToDate: "TinyStats は最新です", .updateAvailable: "アップデートあり: %@",
-            .downloadUpdate: "ダウンロード", .autoCheckUpdates: "アップデートを自動確認",
+            .downloadUpdate: "ダウンロード", .updateViaHomebrew: "Homebrewで更新",
+            .autoCheckUpdates: "アップデートを自動確認",
             .updateFailed: "アップデートを確認できませんでした",
             .removeHint: "セルをここにドラッグして削除",
             .diagnostics: "診断", .exportLogs: "ログを書き出す…", .revealLogs: "Finderで表示",
@@ -406,7 +412,8 @@ enum Loc {
             .reportIssue: "反馈问题或建议",
             .checkForUpdates: "检查更新", .checkingUpdates: "正在检查更新…",
             .upToDate: "TinyStats 已是最新", .updateAvailable: "有可用更新：%@",
-            .downloadUpdate: "下载", .autoCheckUpdates: "自动检查更新",
+            .downloadUpdate: "下载", .updateViaHomebrew: "通过 Homebrew 更新",
+            .autoCheckUpdates: "自动检查更新",
             .updateFailed: "无法检查更新",
             .removeHint: "将单元拖到此处以移除",
             .diagnostics: "诊断", .exportLogs: "导出日志…", .revealLogs: "在访达中显示",

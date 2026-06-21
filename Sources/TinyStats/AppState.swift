@@ -293,6 +293,44 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Runs the Homebrew upgrade in a detached Terminal window. We don't shell `brew` as a
+    /// child of the app because the cask's `uninstall quit:` would kill the app — and the
+    /// upgrade with it — mid-run. A standalone Terminal session survives the app quitting.
+    func updateViaHomebrew() {
+        // Relaunch the freshly-installed copy at the same path we're running from (the cask
+        // quit us mid-upgrade). installedViaHomebrew already guarantees this is under /Applications.
+        let appPath = Bundle.main.bundlePath
+        let script = """
+        #!/bin/bash
+        echo "Updating TinyStats via Homebrew…"
+        echo
+        \(UpdateChecker.brewUpgradeCommand)
+        status=$?
+        echo
+        if [ $status -eq 0 ]; then
+            echo "Done — relaunching TinyStats."
+            open "\(appPath)"
+            echo "You can close this window."
+        else
+            echo "Update failed (exit $status)."
+        fi
+        """
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tinystats-update-\(UUID().uuidString).command")
+        do {
+            try script.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: url.path)
+            // Force Terminal as the handler so it runs rather than opening in an editor.
+            let open = Process()
+            open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            open.arguments = ["-a", "Terminal", url.path]
+            try open.run()
+        } catch {
+            Log.error("Homebrew update launch failed: \(error.localizedDescription)")
+        }
+    }
+
     private func ingest(_ snap: MetricsSnapshot) {
         snapshot = snap
         sampleCounter += 1

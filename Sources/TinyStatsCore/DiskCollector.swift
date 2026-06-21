@@ -7,6 +7,7 @@ final class DiskCollector {
     private var lastRead: UInt64 = 0
     private var lastWrite: UInt64 = 0
     private var lastTime: Date?
+    private var lastRates: (read: Double, write: Double) = (0, 0)
 
     func sample() -> DiskUsage {
         var usage = DiskUsage()
@@ -20,14 +21,20 @@ final class DiskCollector {
 
         let (read, write) = Self.ioBytes()
         let now = Date()
-        defer { lastRead = read; lastWrite = write; lastTime = now }
         if let lastTime {
             let seconds = now.timeIntervalSince(lastTime)
-            if seconds > 0 {
-                usage.readBytesPerSec = read >= lastRead ? Double(read - lastRead) / seconds : 0
-                usage.writeBytesPerSec = write >= lastWrite ? Double(write - lastWrite) / seconds : 0
+            // Too short a window (back-to-back forced refresh) can't measure throughput; carry
+            // the last rates forward and keep the baseline so the next real tick is accurate.
+            if seconds < MetricRate.minSampleInterval {
+                usage.readBytesPerSec = lastRates.read
+                usage.writeBytesPerSec = lastRates.write
+                return usage
             }
+            usage.readBytesPerSec = read >= lastRead ? Double(read - lastRead) / seconds : 0
+            usage.writeBytesPerSec = write >= lastWrite ? Double(write - lastWrite) / seconds : 0
         }
+        lastRead = read; lastWrite = write; lastTime = now
+        lastRates = (usage.readBytesPerSec, usage.writeBytesPerSec)
         return usage
     }
 

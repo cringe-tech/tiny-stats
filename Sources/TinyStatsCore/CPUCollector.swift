@@ -4,6 +4,8 @@ import Darwin
 /// CPU usage from per-core tick deltas (`host_processor_info` / `PROCESSOR_CPU_LOAD_INFO`).
 public final class CPUCollector {
     private var previous: [host_cpu_load_info] = []
+    private var lastTime: Date?
+    private var lastUsage = CPUUsage()
 
     init() {}
 
@@ -40,9 +42,19 @@ public final class CPUCollector {
 
     func sample() -> CPUUsage {
         let current = Self.hostLoadInfo()
-        defer { previous = current }
-        guard !previous.isEmpty else { return CPUUsage() }
-        return Self.usage(previous: previous, current: current)
+        let now = Date()
+        guard !previous.isEmpty else {
+            previous = current; lastTime = now
+            return lastUsage
+        }
+        // Sampling too soon after the last tick (a forced refresh) spans too few ticks to be
+        // meaningful and would read as ~0%. Hold the last value and keep the baseline.
+        if let lastTime, now.timeIntervalSince(lastTime) < MetricRate.minSampleInterval {
+            return lastUsage
+        }
+        let usage = Self.usage(previous: previous, current: current)
+        previous = current; lastTime = now; lastUsage = usage
+        return usage
     }
 
     private static func hostLoadInfo() -> [host_cpu_load_info] {
