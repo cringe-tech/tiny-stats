@@ -42,8 +42,15 @@ struct PopoverView: View {
         .padding(.top, 12)
         .padding(.bottom, 8)
         .frame(width: 300, height: 440)
+        // Draw our own menu material. The system one MenuBarExtra(.window) supplies only kicks in
+        // once the panel becomes key, so the very first open flashes a black window; an always-
+        // active effect view fills it from the first frame instead.
+        .background(VisualEffectView().ignoresSafeArea())
         .background(WindowAccessor { window in
             hostWindow = window
+            // Let the behind-window material show through instead of the panel's opaque black fill.
+            window?.isOpaque = false
+            window?.backgroundColor = .clear
             DispatchQueue.main.async { window?.makeKey() }   // first time the panel is created
         })
         .onAppear {
@@ -155,6 +162,22 @@ struct PopoverView: View {
         }
         .font(.system(.callout))
     }
+}
+
+/// The standard menu/popover translucent material as a SwiftUI background. `state = .active`
+/// (not the default `.followsWindowActiveState`) so it renders even before the panel becomes
+/// key — otherwise the first popover open after launch shows a black window.
+struct VisualEffectView: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .menu
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+    func updateNSView(_ view: NSVisualEffectView, context: Context) { view.material = material }
 }
 
 /// Hands back the hosting NSWindow once this view lands in one, so SwiftUI code (which has

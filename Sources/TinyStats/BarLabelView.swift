@@ -131,6 +131,9 @@ struct MenuBarLabel: View {
     var hiddenCount: Int = 0
     /// Whether macOS Low Power Mode is on (tints the battery cell yellow).
     var lowPower: Bool = false
+    /// Dark/light of the menu bar, supplied by `AppState` so the cells tint correctly from the
+    /// first frame (an in-view read is unreliable before the status-item window exists).
+    var menuBarIsDark: Bool = false
 
     /// The cells actually drawn: the rightmost ones, with at least one always kept.
     private var visibleMetrics: [BarMetric] {
@@ -148,15 +151,6 @@ struct MenuBarLabel: View {
 
     var body: some View {
         Image(nsImage: isOverflowed ? MenuBarOverflow.image() : rendered)
-    }
-
-    /// Light/dark of the *menu bar* (not just the app): read from the status-item window so the
-    /// non-template text colour is right even when the menu bar's backdrop differs from the
-    /// system appearance (e.g. a dark wallpaper in Light Mode).
-    @MainActor private var menuBarIsDark: Bool {
-        let window = NSApp.windows.first { String(describing: type(of: $0)) == "NSStatusBarWindow" }
-        let appearance = window?.effectiveAppearance ?? NSApp.effectiveAppearance
-        return appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
 
     @MainActor private var rendered: NSImage {

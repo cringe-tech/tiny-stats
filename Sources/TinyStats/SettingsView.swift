@@ -112,6 +112,8 @@ struct SettingsView: View {
                     Label(Loc.t(.cellsHidden, "\(state.menuBarHiddenCount)"), systemImage: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
             Section(Loc.t(.menuBarCells)) {

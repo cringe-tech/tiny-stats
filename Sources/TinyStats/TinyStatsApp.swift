@@ -14,7 +14,8 @@ struct TinyStatsApp: App {
                          mode: state.settings.barValueMode,
                          display: state.settings.barDisplayMode,
                          hiddenCount: state.menuBarHiddenCount,
-                         lowPower: state.lowPowerMode)
+                         lowPower: state.lowPowerMode,
+                         menuBarIsDark: state.menuBarIsDark)
         }
         .menuBarExtraStyle(.window)
 

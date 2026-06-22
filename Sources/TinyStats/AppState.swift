@@ -236,6 +236,11 @@ final class AppState: ObservableObject {
     @Published private(set) var menuBarHiddenCount = 0
     /// Whether macOS Low Power Mode is currently on (shown on the cells, Overview and History).
     @Published private(set) var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+    /// Dark/light of the *menu bar* (which can differ from the system appearance — e.g. a dark
+    /// wallpaper in Light Mode), so the rasterised cells are tinted to match. Published rather
+    /// than read at render time: at launch the status-item window isn't in `NSApp.windows` yet,
+    /// so an in-place read falls back to the system appearance and the text renders black.
+    @Published private(set) var menuBarIsDark = AppState.readMenuBarIsDark()
     private var lastUpdateCheck: Date?
 
     private let engine = MetricsEngine()
@@ -272,7 +277,17 @@ final class AppState: ObservableObject {
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.recomputeMenuBarFit() }
+            Task { @MainActor in
+                self?.recomputeMenuBarFit()
+                self?.refreshMenuBarAppearance()
+            }
+        }
+        // The status-item window appears a beat after launch; re-read the menu-bar appearance a
+        // few times so the cells stop rendering black before the first metrics tick lands.
+        for delay in [0.1, 0.3, 0.6, 1.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.refreshMenuBarAppearance()
+            }
         }
         recomputeInterval()
         syncLaunchAtLogin()
@@ -344,7 +359,10 @@ final class AppState: ObservableObject {
         ))
         trimHistory(now: snap.date)
         // Re-measure on the next runloop tick, once the new label has been laid out in the bar.
-        DispatchQueue.main.async { [weak self] in self?.recomputeMenuBarFit() }
+        DispatchQueue.main.async { [weak self] in
+            self?.recomputeMenuBarFit()
+            self?.refreshMenuBarAppearance()
+        }
     }
 
     /// Asks `MenuBarFit` how many leftmost cells to drop, and publishes the result so the
@@ -353,6 +371,20 @@ final class AppState: ObservableObject {
         let n = menuBarFit.hiddenCount(metrics: settings.barMetrics, snapshot: snapshot,
                                        mode: settings.barValueMode, display: settings.barDisplayMode)
         if menuBarHiddenCount != n { menuBarHiddenCount = n }
+    }
+
+    /// Reads whether the menu bar is currently dark from the status-item window (falling back to
+    /// the app appearance before that window exists).
+    private static func readMenuBarIsDark() -> Bool {
+        let window = NSApp.windows.first { String(describing: type(of: $0)) == "NSStatusBarWindow" }
+        let appearance = window?.effectiveAppearance ?? NSApp.effectiveAppearance
+        return appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
+    /// Re-reads the menu-bar appearance and republishes if it changed, so the cells re-tint.
+    private func refreshMenuBarAppearance() {
+        let dark = Self.readMenuBarIsDark()
+        if menuBarIsDark != dark { menuBarIsDark = dark }
     }
 
     /// Drops samples older than the configured retention window (and enforces the cap).

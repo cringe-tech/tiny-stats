@@ -3,6 +3,8 @@ import Darwin
 
 /// Memory usage from `host_statistics64` (vm_statistics64).
 final class MemoryCollector {
+    private var lastTime: Date?
+    private var lastUsage = MemoryUsage()
     private let pageSize: UInt64 = {
         var size: vm_size_t = 0
         host_page_size(mach_host_self(), &size)
@@ -10,6 +12,13 @@ final class MemoryCollector {
     }()
 
     func sample() -> MemoryUsage {
+        // A forced refresh (e.g. opening the popover) shouldn't make the menu-bar cell jump on
+        // click. Hold the last value when sampled below the minimum window, like the rate collectors.
+        let now = Date()
+        if let lastTime, now.timeIntervalSince(lastTime) < MetricRate.minSampleInterval {
+            return lastUsage
+        }
+
         let total = ProcessInfo.processInfo.physicalMemory
         var stats = vm_statistics64()
         var count = mach_msg_type_number_t(
@@ -20,9 +29,7 @@ final class MemoryCollector {
                 host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
             }
         }
-        guard result == KERN_SUCCESS else {
-            return MemoryUsage(totalBytes: total, usedBytes: 0, pressure: 0)
-        }
+        guard result == KERN_SUCCESS else { return lastUsage }
 
         // "App memory" model used by Activity Monitor: active + wired + compressed.
         let active = UInt64(stats.active_count) * pageSize
@@ -31,6 +38,9 @@ final class MemoryCollector {
         let used = active + wired + compressed
         let pressure = total == 0 ? 0 : Double(wired + compressed) / Double(total)
 
-        return MemoryUsage(totalBytes: total, usedBytes: used, pressure: min(1, pressure))
+        let usage = MemoryUsage(totalBytes: total, usedBytes: used, pressure: min(1, pressure))
+        lastTime = now
+        lastUsage = usage
+        return usage
     }
 }

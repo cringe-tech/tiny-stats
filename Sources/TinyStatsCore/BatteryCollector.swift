@@ -5,13 +5,23 @@ import IOKit.ps
 /// Battery state from the IOPowerSources API, enriched with cycle count and health
 /// from the `AppleSmartBattery` registry entry. Returns nil on machines without a battery.
 final class BatteryCollector {
+    private var lastTime: Date?
+    private var lastInfo: BatteryInfo?
+
     func sample() -> BatteryInfo? {
+        // A forced refresh (e.g. opening the popover) shouldn't make the menu-bar cell jump on
+        // click. Hold the last value when sampled below the minimum window, like the rate collectors.
+        let now = Date()
+        if let lastTime, now.timeIntervalSince(lastTime) < MetricRate.minSampleInterval {
+            return lastInfo
+        }
+
         guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
               let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef],
               let source = sources.first,
               let desc = IOPSGetPowerSourceDescription(snapshot, source)?
                   .takeUnretainedValue() as? [String: Any]
-        else { return nil }
+        else { return lastInfo }
 
         var info = BatteryInfo()
         let current = (desc[kIOPSCurrentCapacityKey] as? Int) ?? 0
@@ -24,6 +34,8 @@ final class BatteryCollector {
         }
 
         enrichFromRegistry(&info)
+        lastTime = now
+        lastInfo = info
         return info
     }
 
