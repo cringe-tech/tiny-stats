@@ -7,9 +7,6 @@
 A tiny, native macOS menu bar system monitor. Minimal, HIG-friendly, and built to be
 light on CPU and battery. Open source (MIT).
 
-> Status: **v1 — monitoring only** (read-only). Fan control is a planned phase 2 and is
-> intentionally not included yet (see [Roadmap](#roadmap)).
-
 ## Features
 
 - **Menu bar cells** — show up to 5 metrics inline (CPU, GPU, memory, network, disk, battery).
@@ -28,10 +25,17 @@ light on CPU and battery. Open source (MIT).
     Power); **Nerd stats** reveals every named sensor (per-core, per-cluster, banks),
     fans, power, plus voltage and current. Temperature unit follows the system or can be
     pinned to °C / °F.
+- **Fan control** — set fan speed manually or via a temperature curve. Choose a preset
+  (Cool-touch / Balanced / Turbo / Auto) or draw your own curve against CPU, GPU or
+  Power+Battery temperature. Includes a **Turbo-while-gaming** mode that follows the native
+  macOS Game Mode signal. Runs through a lightweight privileged helper daemon (installed
+  once with an admin password prompt); the helper enforces minimum RPM, hard-cuts back to
+  Auto on disconnect or crash, and reverts on exit — so a stuck speed cannot survive an app
+  quit or a daemon kill.
 - **Hide what you don't use** — drag any metric to *Hidden* and tiny-stats **stops
   collecting data for it entirely**, not just hiding the UI.
 - **Live settings** — changes apply immediately (no Save step), with a live menu-bar
-  preview. Organised into **General**, **Menu Bar** and **Panels** tabs.
+  preview. Organised into **General**, **Menu Bar**, **Panels** and **Fan Control** tabs.
 - **Keyboard shortcuts** — `⌘1`–`⌘3` switch tabs, `⌘,` opens settings, `⌘Q` quits.
 - **Battery-friendly** — a single shared polling loop with an adaptive interval that slows
   3× in Low Power Mode and 1.5× on battery, reads SMC sensors only when the Sensors tab is
@@ -56,6 +60,7 @@ light on CPU and battery. Open source (MIT).
     <td><img src="docs/screenshots/settings_general.png" alt="General"></td>
     <td><img src="docs/screenshots/settings_menubar.png" alt="Menu Bar"></td>
     <td><img src="docs/screenshots/settings_panels.png" alt="Panels"></td>
+    <td><img src="docs/screenshots/settings_fans1.png" alt="Fan Control"></td>
   </tr>
 </table>
 
@@ -101,29 +106,34 @@ popover's **Quit** button or `⌘Q`.
 The math-heavy and table-driven parts run as an offline self-test without Xcode/XCTest:
 
 ```sh
-swift run TinyStatsSelfTest          # offline unit checks (CPU/network math, sensor tables)
+swift run TinyStatsSelfTest          # offline unit checks (CPU/network math, sensor tables, fan curves)
 swift run TinyStatsSelfTest --live   # sample the real engine once (incl. SMC sensors)
 swift run TinyStatsSelfTest --smc    # dump raw SMC keys for debugging
 ```
 
-## How it reads sensors
+## How it reads (and writes) sensors
 
 System metrics use native Apple APIs (`host_statistics64`, `getifaddrs`, IOKit registry
-for GPU/disk/battery). Hardware sensors come from the **SMC** via a small, **read-only** C
-bridge ([`Sources/CSMC`](Sources/CSMC)) that never writes to the SMC. Keys are enumerated by
-prefix into temperature / fan / voltage / current / power and shown by their raw SMC key in
-*Nerd stats*; sensor classification needs no per-model table, so it keeps working on chips
-that ship after this build.
+for GPU/disk/battery). Hardware sensors come from the **SMC** via a small C bridge
+([`Sources/CSMC`](Sources/CSMC)). In monitoring-only mode the bridge is read-only; when
+**Fan Control** is enabled a privileged helper daemon (`TinyStatsFanHelper`) uses the same
+bridge to write fan-target keys (`F{i}Md` / `F{i}Tg`). Keys are enumerated by prefix into
+temperature / fan / voltage / current / power and shown by their raw SMC key in *Nerd stats*;
+sensor classification needs no per-model table, so it keeps working on chips that ship after
+this build.
 
 ## Project layout
 
 ```
 Sources/
-  CSMC/             read-only C bridge to the AppleSMC IOKit service
-  SMCKit/           SMC connection, sensor discovery, naming tables, classifier
-  TinyStatsCore/    collectors (CPU/mem/net/disk/gpu/battery/processes) + polling engine
-  TinyStats/        SwiftUI app: menu bar label, popover, settings, view models
-  TinyStatsSelfTest/ offline test runner
+  CSMC/                 C bridge to the AppleSMC IOKit service (read + write)
+  SMCKit/               SMC connection, sensor discovery, naming tables, classifier
+  CGameMode/            C shim exposing <notify.h> to Swift (macOS Game Mode detection)
+  FanControlShared/     XPC protocol shared by the app and the fan helper
+  TinyStatsCore/        collectors, polling engine, fan controller, fan models
+  TinyStats/            SwiftUI app: menu bar label, popover, settings, view models
+  TinyStatsFanHelper/   privileged LaunchDaemon that performs SMC fan writes
+  TinyStatsSelfTest/    offline test runner
 ```
 
 ## Updates
@@ -138,21 +148,19 @@ accepts the downloaded build (a future upgrade, possibly via Sparkle).
 
 ## Privacy & security
 
-TinyStats is **read-only**. It writes nothing to disk except its own preferences
-(`UserDefaults`) and a local diagnostic log (`~/Library/Logs/TinyStats`, rotated, never sent
-anywhere — export it yourself from Settings → General → Diagnostics), has no telemetry, and
-process sampling uses `libproc` and only sees the current user's processes. The **only** network request it ever makes is the update check —
-an unauthenticated `GET` to `api.github.com` — which you can turn off with *Check for updates
-automatically* in Settings. The only system integration that changes anything is the optional
-**Launch at login** item via `SMAppService`.
+TinyStats writes nothing to disk except its own preferences (`UserDefaults`) and a local
+diagnostic log (`~/Library/Logs/TinyStats`, rotated, never sent anywhere — export it
+yourself from Settings → General → Diagnostics). It has no telemetry, and process sampling
+uses `libproc` and only sees the current user's processes. The **only** network request it
+ever makes is the update check — an unauthenticated `GET` to `api.github.com` — which you
+can turn off with *Check for updates automatically* in Settings. The only system integration
+that changes anything is the optional **Launch at login** item via `SMAppService`.
 
-## Roadmap
-
-- **Fan control (phase 2)** — manual speed and temperature/battery-based curves. On Apple
-  Silicon this requires writing SMC keys from a **privileged helper daemon** (XPC +
-  `SMAppService`), code-signed with an Apple Developer ID. It carries a real **risk of
-  hardware damage** if misused, so it will ship behind a feature flag with hard safety
-  limits and explicit confirmation.
+**Fan Control** is opt-in and off by default. When enabled, an admin-password dialog installs
+`TinyStatsFanHelper` as a system LaunchDaemon (the only write path to SMC fan keys). The
+helper clamps all target RPMs to the hardware's own `[F{i}Mn, F{i}Mx]` range and
+automatically reverts fans to Auto if the app disconnects, crashes, or stops sending
+heartbeats — so a stuck speed cannot survive a daemon kill or a Mac sleep/wake cycle.
 
 ## Support
 

@@ -161,6 +161,38 @@ do {
     check(PowerNames.name(forKey: "PHPB") == nil, "unknown power key -> nil")
 }
 
+print("Fan curve interpolation:")
+do {
+    let curve = FanCurve(points: [.init(tempC: 40, percent: 30), .init(tempC: 60, percent: 80)])
+    check(approx(curve.percent(atTemp: 40), 30), "at first point = 30%")
+    check(approx(curve.percent(atTemp: 60), 80), "at last point = 80%")
+    check(approx(curve.percent(atTemp: 50), 55), "midpoint = 55% (linear)")
+    check(approx(curve.percent(atTemp: 20), 30), "below range clamps to first")
+    check(approx(curve.percent(atTemp: 99), 80), "above range clamps to last")
+    // Unsorted input is normalised.
+    let messy = FanCurve(points: [.init(tempC: 60, percent: 80), .init(tempC: 40, percent: 30)])
+    check(approx(messy.percent(atTemp: 50), 55), "unsorted points still interpolate")
+}
+
+print("Fan presets:")
+do {
+    check(FanPreset.auto.builtInCurve == nil, "auto has no curve")
+    check(FanPreset.custom.builtInCurve == nil, "custom defers to stored curve")
+    check(approx(FanPreset.turbo.builtInCurve!.percent(atTemp: 30), 100), "turbo = 100% cold")
+    check(approx(FanPreset.turbo.builtInCurve!.percent(atTemp: 90), 100), "turbo = 100% hot")
+    check(approx(FanPreset.coolTouch.builtInCurve!.percent(atTemp: 40), 30), "cool-touch ramps from 30%")
+    check(approx(FanPreset.coolTouch.builtInCurve!.percent(atTemp: 70), 100), "cool-touch hits 100% by 70°C")
+}
+
+print("Percent → RPM mapping:")
+do {
+    check(approx(FanModel.rpm(forPercent: 0, min: 1200, max: 5779), 1200), "0% = min RPM")
+    check(approx(FanModel.rpm(forPercent: 100, min: 1200, max: 5779), 5779), "100% = max RPM")
+    check(approx(FanModel.rpm(forPercent: 50, min: 1200, max: 5779), 3489.5), "50% = midpoint RPM")
+    check(approx(FanModel.rpm(forPercent: -20, min: 1200, max: 5779), 1200), "negative clamps to min")
+    check(approx(FanModel.rpm(forPercent: 200, min: 1200, max: 5779), 5779), "over 100% clamps to max")
+}
+
 print("Version compare:")
 do {
     check(UpdateChecker.isNewer("0.2.0", than: "0.1.0"), "0.2.0 > 0.1.0")

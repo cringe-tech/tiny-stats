@@ -182,6 +182,15 @@ struct AppSettings: Equatable, Codable {
     var overviewOrder: [OverviewSection] = [.cpu, .memory, .network, .disk, .gpu, .battery]
     var inactiveSections: [OverviewSection] = []
 
+    // Fan control (phase 2). Off by default; gated behind a one-time risk acknowledgement.
+    var fanControlEnabled: Bool = false
+    var fanControlAcknowledged: Bool = false
+    var fanPreset: FanPreset = .auto
+    var fanSensorSource: FanSensorSource = .cpu
+    var fanCurve: FanCurve = FanModel.defaultCustomCurve
+    /// Temporarily run Turbo while a game is the active app (proxy for macOS Game Mode).
+    var fanTurboInGame: Bool = false
+
     // Custom init so that old saved settings (missing new keys) still load without resetting everything.
     init() {}
 
@@ -206,6 +215,12 @@ struct AppSettings: Equatable, Codable {
         overviewOrder = (try? c.decode([OverviewSection].self, forKey: .overviewOrder))
             ?? [.cpu, .memory, .network, .disk, .gpu, .battery]
         inactiveSections = (try? c.decode([OverviewSection].self, forKey: .inactiveSections)) ?? []
+        fanControlEnabled = (try? c.decode(Bool.self, forKey: .fanControlEnabled)) ?? false
+        fanControlAcknowledged = (try? c.decode(Bool.self, forKey: .fanControlAcknowledged)) ?? false
+        fanPreset = (try? c.decode(FanPreset.self, forKey: .fanPreset)) ?? .auto
+        fanSensorSource = (try? c.decode(FanSensorSource.self, forKey: .fanSensorSource)) ?? .cpu
+        fanCurve = (try? c.decode(FanCurve.self, forKey: .fanCurve)) ?? FanModel.defaultCustomCurve
+        fanTurboInGame = (try? c.decode(Bool.self, forKey: .fanTurboInGame)) ?? false
     }
 }
 
@@ -236,6 +251,8 @@ final class AppState: ObservableObject {
     @Published private(set) var menuBarHiddenCount = 0
     /// Whether macOS Low Power Mode is currently on (shown on the cells, Overview and History).
     @Published private(set) var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+    /// Live fan-control status (helper installed/responding, per-fan RPM, source temp, conflicts).
+    @Published private(set) var fanStatus = FanControlStatus()
     /// Dark/light of the *menu bar* (which can differ from the system appearance — e.g. a dark
     /// wallpaper in Light Mode), so the rasterised cells are tinted to match. Published rather
     /// than read at render time: at launch the status-item window isn't in `NSApp.windows` yet,
@@ -244,6 +261,8 @@ final class AppState: ObservableObject {
     private var lastUpdateCheck: Date?
 
     private let engine = MetricsEngine()
+    /// Implicitly-unwrapped so its status callback can capture a fully-initialised `self`.
+    private var fanController: FanController!
     private let menuBarFit = MenuBarFit()
     private var popoverVisible = false
     private var sampleCounter = 0
@@ -292,7 +311,101 @@ final class AppState: ObservableObject {
         recomputeInterval()
         syncLaunchAtLogin()
         if settings.autoCheckUpdates { checkForUpdates(force: false) }
+
+        // Fan controller: publishes status back to the UI; starts controlling only if the user
+        // has enabled it (and the helper is installed). Safe no-op otherwise. We inject the
+        // conflict name (computed here, since it needs the running-app list) into each update.
+        fanController = FanController(onStatus: { [weak self] status in
+            guard let self else { return }
+            var s = status
+            s.conflict = self.fanConflictName
+            self.fanStatus = s
+        })
+        // A competing fan controller (e.g. Macs Fan Control) only conflicts while it's *running*,
+        // so we track the running-app list rather than leftover daemons on disk — quitting it
+        // clears the warning.
+        let wc = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            wc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.updateFanConflict() }
+            }
+        }
+        updateFanConflict()
+        fanController.apply(fanControlConfig())
+        // Follow macOS Game Mode for the Turbo-in-game override.
+        gameMode = GameModeMonitor { [weak self] on in
+            Task { @MainActor in self?.setGameModeOn(on) }
+        }
     }
+
+    /// Name of a running third-party fan controller, or nil. Injected into `fanStatus.conflict`.
+    private var fanConflictName: String?
+
+    private func updateFanConflict() {
+        let name = Self.detectFanConflict()
+        guard name != fanConflictName else { return }
+        fanConflictName = name
+        var s = fanStatus
+        s.conflict = name
+        fanStatus = s
+    }
+
+    /// Looks for a *running* competing fan-control app by bundle id. Off when it's been quit.
+    private static func detectFanConflict() -> String? {
+        for app in NSWorkspace.shared.runningApplications {
+            guard let id = app.bundleIdentifier?.lowercased() else { continue }
+            if id.contains("macsfancontrol") || id.contains("crystalidea") { return "Macs Fan Control" }
+            if id.contains("tgpro") || id.contains("tunabellysoftware") { return "TG Pro" }
+            if id.contains("smcfancontrol") { return "smcFanControl" }
+        }
+        return nil
+    }
+
+    // MARK: Fan control
+
+    /// True while the game-Turbo override is engaged (macOS Game Mode is on and the option is on)
+    /// — published so the UI can show it, and read by `fanControlConfig`.
+    @Published private(set) var fanGameTurboActive = false
+    private var gameMode: GameModeMonitor?
+    private var gameModeOn = false
+
+    private func fanControlConfig() -> FanControlConfig {
+        // While Game Mode is on (and the option is on), force Turbo over the chosen preset
+        // without changing the persisted setting.
+        let preset = (settings.fanTurboInGame && fanGameTurboActive) ? .turbo : settings.fanPreset
+        return FanControlConfig(
+            enabled: settings.fanControlEnabled,
+            preset: preset,
+            sensorSource: settings.fanSensorSource,
+            customCurve: settings.fanCurve
+        )
+    }
+
+    private func setGameModeOn(_ on: Bool) {
+        gameModeOn = on
+        recomputeGameTurbo()
+    }
+
+    /// Engages/releases the Turbo override from the current Game Mode + setting state.
+    private func recomputeGameTurbo() {
+        let active = gameModeOn && settings.fanControlEnabled && settings.fanTurboInGame
+        guard active != fanGameTurboActive else { return }
+        fanGameTurboActive = active
+        fanController.apply(fanControlConfig())
+    }
+
+    /// Installs the privileged helper (one admin-password prompt), returning the result.
+    func installFanHelper() async -> Result<Void, HelperError> {
+        await fanController.installHelper()
+    }
+
+    /// Reverts fans to auto and removes the helper (one admin-password prompt).
+    func uninstallFanHelper() async -> Result<Void, HelperError> {
+        await fanController.uninstallHelper()
+    }
+
+    /// Refreshes installed/conflict status (e.g. when the Fans settings tab opens).
+    func refreshFanStatus() { fanController.refreshStatus() }
 
     // MARK: Updates
 
@@ -416,6 +529,12 @@ final class AppState: ObservableObject {
         if old.barMetrics != new.barMetrics || old.barValueMode != new.barValueMode
             || old.barDisplayMode != new.barDisplayMode {
             recomputeMenuBarFit()
+        }
+        if old.fanControlEnabled != new.fanControlEnabled || old.fanPreset != new.fanPreset
+            || old.fanSensorSource != new.fanSensorSource || old.fanCurve != new.fanCurve
+            || old.fanTurboInGame != new.fanTurboInGame {
+            fanController.apply(fanControlConfig())
+            recomputeGameTurbo()
         }
     }
 

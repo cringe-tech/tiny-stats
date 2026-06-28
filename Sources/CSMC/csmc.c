@@ -38,7 +38,7 @@ typedef struct {
 } SMCParamStruct;
 
 enum { KERNEL_INDEX_SMC = 2 };
-enum { kSMCReadKey = 5, kSMCGetKeyFromIndex = 8, kSMCGetKeyInfo = 9 };
+enum { kSMCReadKey = 5, kSMCWriteKey = 6, kSMCGetKeyFromIndex = 8, kSMCGetKeyInfo = 9 };
 
 unsigned int csmc_open(void) {
     io_service_t service =
@@ -88,6 +88,29 @@ int csmc_read(unsigned int conn, uint32_t key,
     if (out_size) *out_size = size;
     if (out_bytes) memcpy(out_bytes, out.bytes, 32);
     return 0;
+}
+
+int csmc_write(unsigned int conn, uint32_t key, uint32_t size, const uint8_t *bytes) {
+    if (size > 32) return -1;
+
+    // Validate the key exists and learn its expected data size (the kernel rejects writes
+    // whose dataSize doesn't match the key's). We keep the caller-supplied byte count but
+    // bail if the key can't be queried.
+    SMCParamStruct in, out;
+    memset(&in, 0, sizeof(in));
+    memset(&out, 0, sizeof(out));
+    in.key = key;
+    in.data8 = kSMCGetKeyInfo;
+    if (smc_call(conn, &in, &out) != kIOReturnSuccess || out.result != 0) return -1;
+
+    memset(&in, 0, sizeof(in));
+    memset(&out, 0, sizeof(out));
+    in.key = key;
+    in.keyInfo.dataSize = size;
+    in.data8 = kSMCWriteKey;
+    memcpy(in.bytes, bytes, size);
+    if (smc_call(conn, &in, &out) != kIOReturnSuccess) return -1;
+    return out.result == 0 ? 0 : -2;
 }
 
 uint32_t csmc_key_from_index(unsigned int conn, uint32_t index) {

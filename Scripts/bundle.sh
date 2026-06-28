@@ -14,6 +14,7 @@ CONTENTS="$APP/Contents"
 
 echo "==> swift build -c $CONFIG"
 swift build -c "$CONFIG" --product TinyStats
+swift build -c "$CONFIG" --product TinyStatsFanHelper
 
 BIN_DIR="$(swift build -c "$CONFIG" --product TinyStats --show-bin-path)"
 
@@ -21,6 +22,9 @@ echo "==> assembling $APP"
 rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$BIN_DIR/TinyStats" "$CONTENTS/MacOS/TinyStats"
+# Privileged fan-control helper ships next to the main binary; the in-app installer copies it
+# to /Library and bootstraps it as a root LaunchDaemon (resolved relative to the main executable).
+cp "$BIN_DIR/TinyStatsFanHelper" "$CONTENTS/MacOS/TinyStatsFanHelper"
 cp "Resources/Info.plist" "$CONTENTS/Info.plist"
 cp "Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
 
