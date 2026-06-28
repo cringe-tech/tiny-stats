@@ -17,6 +17,11 @@ final class MenuBarFit {
     private var onFrameChange: (() -> Void)?
     /// Last computed value, returned when the item isn't measurable yet, to avoid flicker.
     private var lastHidden = 0
+    /// When expanding would still leave at least this much free space beside the item, we treat
+    /// it as a genuine gap (not a wedge against the notch) and reclaim it, bypassing the stricter
+    /// anti-oscillation budget. Sized below a single cell so a real gap clears it but the razor's
+    /// edge near the notch does not.
+    private static let expandSlack: CGFloat = 22
 
     /// Registers a handler fired when the status item moves or resizes — which happens when a
     /// neighbouring menu-bar item appears or disappears, changing how much room we have.
@@ -59,13 +64,18 @@ final class MenuBarFit {
         while keep > 0 {
             let w = width(keep: keep, metrics: metrics, snapshot: snapshot, mode: mode, display: display) + pad
             let expanding = (metrics.count - keep) < lastHidden
-            // Showing *more* than we do now must clear `allowed` with room to spare: our item
-            // grows by (w - shownWidth), and under heavy overflow macOS shifts our anchor by
-            // roughly that much, eating back into `allowed`. Budget for it so the wider state
-            // still fits — otherwise the decision flip-flops forever (expand → no room → collapse
-            // → room again → expand …). Collapsing only frees room, so plain width is enough.
-            let needed = expanding ? (2 * w - shownWidth) : w
-            if needed <= allowed { break }
+            // Showing *more* than we do now normally must clear `allowed` with room to spare: our
+            // item grows by (w - shownWidth), and under heavy overflow (wedged against the notch)
+            // macOS shifts our anchor by roughly that much, eating back into `allowed`. Budgeting
+            // for it (the doubled term) avoids an expand → no room → collapse → room again flip-flop.
+            //
+            // But that over-counts when there's a clear gap beside us: if the cell still leaves a
+            // comfortable margin (`expandSlack`), we aren't wedged, the anchor won't move, and the
+            // doubled budget would otherwise strand the cell hidden with empty space next to it.
+            let fits = expanding
+                ? ((2 * w - shownWidth) <= allowed || (allowed - w) >= Self.expandSlack)
+                : (w <= allowed)
+            if fits { break }
             keep -= 1
         }
         lastHidden = metrics.count - keep

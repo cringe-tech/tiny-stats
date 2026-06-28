@@ -8,7 +8,7 @@ import SMCKit
 /// `@unchecked Sendable`: all mutable state is confined to `queue`; the public surface
 /// either hops onto it or is set-once before `start`.
 public final class MetricsEngine: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.tinystats.metrics", qos: .utility)
+    private let queue = DispatchQueue(label: "com.cringetech.tinystats.metrics", qos: .utility)
     private var timer: DispatchSourceTimer?
 
     private let cpu = CPUCollector()

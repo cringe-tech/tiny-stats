@@ -22,8 +22,12 @@ struct SettingsView: View {
                 .tabItem { Label(Loc.t(.menuBar), systemImage: "menubar.rectangle") }
             panelsTab
                 .tabItem { Label(Loc.t(.panels), systemImage: "rectangle.3.group") }
+            FansSettingsView()
+                .tabItem { Label(Loc.t(.fanControl), systemImage: "fanblades") }
         }
-        .frame(width: 480, height: 740)
+        // Wide enough that all four tab labels fit on one row (otherwise the macOS TabView
+        // collapses them into an overflow menu), incl. the longer localized strings.
+        .frame(width: 560, height: 740)
         // Rebuild on language change so every control (incl. cached Picker labels) re-localizes.
         .id(state.settings.language)
         // Give the window a Dock icon + cmd-tab presence while it's open (see DockPresence).

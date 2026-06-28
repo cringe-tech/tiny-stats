@@ -87,4 +87,26 @@ public struct SMCValue: Sendable {
             return nil
         }
     }
+
+    /// Encodes a Double into the raw byte layout for an SMC data type — the inverse of
+    /// `double`. Used to write fan keys (`flt` target RPM, `ui8` mode). Returns `nil` for
+    /// types we don't know how to encode, so the caller never writes a malformed value.
+    public static func encode(_ value: Double, type: String) -> [UInt8]? {
+        switch type {
+        case "flt":
+            let bits = Float(value).bitPattern
+            return [UInt8(bits & 0xff), UInt8((bits >> 8) & 0xff),
+                    UInt8((bits >> 16) & 0xff), UInt8((bits >> 24) & 0xff)]
+        case "ui8":
+            return [UInt8(clamping: Int(value.rounded()))]
+        case "ui16":
+            let r = UInt16(clamping: Int(value.rounded()))
+            return [UInt8((r >> 8) & 0xff), UInt8(r & 0xff)]
+        case "fpe2":
+            let r = UInt16(clamping: Int((value * 4.0).rounded()))
+            return [UInt8((r >> 8) & 0xff), UInt8(r & 0xff)]
+        default:
+            return nil
+        }
+    }
 }

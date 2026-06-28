@@ -26,7 +26,7 @@ public enum Log {
     private static let maxBytes: UInt64 = 50 * 1024 * 1024
 
     /// Serialises every write and lazily owns the open file handle.
-    private static let queue = DispatchQueue(label: "com.tinystats.log")
+    private static let queue = DispatchQueue(label: "com.cringetech.tinystats.log")
 
     // Both are only mutated/used on `queue` (crash handlers read `handle` best-effort), so the
     // serial queue — not the type system — provides the synchronisation.

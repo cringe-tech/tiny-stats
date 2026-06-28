@@ -39,6 +39,26 @@
             "target": "TinyStats",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release TinyStats"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:tinystats}",
+            "name": "Debug TinyStatsFanHelper",
+            "target": "TinyStatsFanHelper",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug TinyStatsFanHelper"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:tinystats}",
+            "name": "Release TinyStatsFanHelper",
+            "target": "TinyStatsFanHelper",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release TinyStatsFanHelper"
         }
     ]
 }

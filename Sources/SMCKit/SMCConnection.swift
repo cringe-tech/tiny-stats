@@ -31,6 +31,20 @@ public final class SMCConnection {
         return SMCValue(key: key, type: FourCC.decode(type), bytes: Array(bytes.prefix(n)))
     }
 
+    /// Writes a Double to a key, encoding it to the key's current SMC data type. Requires the
+    /// process to be running as root (the kernel rejects unprivileged writes), so this is only
+    /// ever called from the fan-control helper. Returns whether the write succeeded.
+    @discardableResult
+    public func write(_ key: String, value: Double) -> Bool {
+        guard let fourcc = FourCC.encode(key) else { return false }
+        // Read once to learn the key's data type, then encode the value to match it.
+        guard let current = read(key),
+              let bytes = SMCValue.encode(value, type: current.type) else { return false }
+        return bytes.withUnsafeBufferPointer {
+            csmc_write(conn, fourcc, UInt32(bytes.count), $0.baseAddress) == 0
+        }
+    }
+
     /// Total number of keys exposed by this SMC (via the `#KEY` meta-key).
     public func keyCount() -> Int {
         Int(read("#KEY")?.uint32 ?? 0)

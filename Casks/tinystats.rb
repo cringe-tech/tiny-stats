@@ -18,10 +18,10 @@ cask "tinystats" do
                    args: ["-dr", "com.apple.quarantine", "#{appdir}/TinyStats.app"]
   end
 
-  uninstall quit: "com.tinystats.app"
+  uninstall quit: "com.cringetech.tinystats.app"
 
   zap trash: [
     "~/Library/Logs/TinyStats",
-    "~/Library/Preferences/com.tinystats.app.plist",
+    "~/Library/Preferences/com.cringetech.tinystats.app.plist",
   ]
 end
