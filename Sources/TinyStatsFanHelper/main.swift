@@ -10,9 +10,13 @@ import FanControlShared
 /// Serial queue owning the SMC connection and all mutable state, so concurrent XPC calls and
 /// the watchdog never race on the hardware. The class is `@unchecked Sendable` on that promise.
 final class HelperService: NSObject, FanHelperProtocol, NSXPCListenerDelegate, @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.tinystats.fanhelper.smc")
+    private let queue = DispatchQueue(label: "com.cringetech.tinystats.fanhelper.smc")
     private let smc: SMCConnection
     private let fanCount: Int
+    /// Per-fan [min, max] RPM, read once at startup. These are hardware-fixed, so re-reading
+    /// them on every clamp/info call would just be wasted root SMC round-trips.
+    private let fanMinRPM: [Double]
+    private let fanMaxRPM: [Double]
     private var controlActive = false
     private var lastHeartbeat = Date()
     private var watchdog: DispatchSourceTimer?
@@ -26,7 +30,10 @@ final class HelperService: NSObject, FanHelperProtocol, NSXPCListenerDelegate, @
 
     private init(smc: SMCConnection) {
         self.smc = smc
-        self.fanCount = Int(smc.read("FNum")?.double ?? 0)
+        let count = Int(smc.read("FNum")?.double ?? 0)
+        self.fanCount = count
+        self.fanMinRPM = (0..<count).map { smc.read("F\($0)Mn")?.double ?? 0 }
+        self.fanMaxRPM = (0..<count).map { smc.read("F\($0)Mx")?.double ?? 0 }
         super.init()
         startWatchdog()
     }
@@ -35,6 +42,11 @@ final class HelperService: NSObject, FanHelperProtocol, NSXPCListenerDelegate, @
 
     func listener(_ listener: NSXPCListener,
                   shouldAcceptNewConnection conn: NSXPCConnection) -> Bool {
+        // Reject any peer that isn't the TinyStats app: the daemon vends a global Mach service
+        // as root, so without this any local process could drive the fans. Validation uses the
+        // peer's audit token (not a racy PID); see FanHelper.clientCodeRequirement for the
+        // ad-hoc-signing caveat. macOS 13+ — our deployment target is 14.
+        conn.setCodeSigningRequirement(FanHelper.clientCodeRequirement)
         conn.exportedInterface = NSXPCInterface(with: FanHelperProtocol.self)
         conn.exportedObject = self
         // If the client goes away (quit, crash, killed) the connection invalidates — fail safe.
@@ -54,8 +66,8 @@ final class HelperService: NSObject, FanHelperProtocol, NSXPCListenerDelegate, @
             for i in 0..<fanCount {
                 fans.append(FanInfo(
                     index: i,
-                    minRPM: smc.read("F\(i)Mn")?.double ?? 0,
-                    maxRPM: smc.read("F\(i)Mx")?.double ?? 0,
+                    minRPM: fanMinRPM[i],
+                    maxRPM: fanMaxRPM[i],
                     actualRPM: smc.read("F\(i)Ac")?.double ?? 0,
                     mode: Int(smc.read("F\(i)Md")?.double ?? 0)))
             }
@@ -68,8 +80,10 @@ final class HelperService: NSObject, FanHelperProtocol, NSXPCListenerDelegate, @
         queue.async { [self] in
             guard index >= 0, index < fanCount else { reply(false); return }
             // Clamp helper-side: never below the fan's reported minimum, never above its max.
-            let mn = smc.read("F\(index)Mn")?.double ?? 0
-            let mx = smc.read("F\(index)Mx")?.double ?? rpm
+            // Limits are cached from startup (hardware-fixed); mx == 0 means we never learned it,
+            // so fall back to the requested value rather than clamping everything to 0.
+            let mn = fanMinRPM[index]
+            let mx = fanMaxRPM[index] > 0 ? fanMaxRPM[index] : rpm
             let clamped = Swift.min(Swift.max(rpm, mn), mx)
             let okMode = smc.write("F\(index)Md", value: 1)
             let okTarget = smc.write("F\(index)Tg", value: clamped)

@@ -5,12 +5,22 @@ import Foundation
 
 public enum FanHelper {
     /// Mach service the helper registers (must match the LaunchDaemon plist `MachServices` key).
-    public static let machServiceName = "com.tinystats.fanhelper"
+    public static let machServiceName = "com.cringetech.tinystats.fanhelper"
     /// Bumped when the wire protocol changes, so the app can detect a stale installed helper.
     public static let protocolVersion = 1
     /// Helper reverts every fan to auto if it gets no command/heartbeat within this window.
     /// The app heartbeats well inside it, so a crashed/hung/killed app fails safe to auto.
     public static let watchdogSeconds: TimeInterval = 6
+
+    /// Code-signing requirement the helper enforces on every XPC peer
+    /// (`NSXPCConnection.setCodeSigningRequirement`), so a random local process can't drive the
+    /// root daemon. It pins the *packaged* app's signing identifier; under `swift run` the dev
+    /// binary's identifier differs (and changes per build), so fan control must be exercised
+    /// from the bundled `TinyStats.app`. With only ad-hoc signing this is best-effort (an
+    /// attacker could ad-hoc-sign with the same identifier) — the helper-side clamp + watchdog
+    /// remain the real safety boundary. Strengthen to an `anchor`/team-ID requirement once the
+    /// app is Developer ID-signed.
+    public static let clientCodeRequirement = "identifier \"com.cringetech.tinystats.app\""
 }
 
 /// One fan's live state, as reported by the helper (which owns the privileged SMC connection).

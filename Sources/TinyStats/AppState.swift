@@ -368,6 +368,12 @@ final class AppState: ObservableObject {
     @Published private(set) var fanGameTurboActive = false
     private var gameMode: GameModeMonitor?
     private var gameModeOn = false
+    /// Pending deactivation of game-turbo: we debounce the OFF signal so a brief Game Mode
+    /// toggle during a loading screen doesn't cause a fan dip-then-spike.
+    private var gameModeOffTask: Task<Void, Never>?
+    /// How long a Game Mode OFF must persist before we release Turbo. Should be long enough
+    /// to span loading-screen transitions (~5 s) but short enough to react to quitting a game.
+    private static let gameModeOffDelay: Duration = .seconds(8)
 
     private func fanControlConfig() -> FanControlConfig {
         // While Game Mode is on (and the option is on), force Turbo over the chosen preset
@@ -382,8 +388,29 @@ final class AppState: ObservableObject {
     }
 
     private func setGameModeOn(_ on: Bool) {
-        gameModeOn = on
-        recomputeGameTurbo()
+        if on {
+            // Game Mode turned on — cancel any pending deactivation and engage immediately.
+            gameModeOffTask?.cancel()
+            gameModeOffTask = nil
+            gameModeOn = true
+            recomputeGameTurbo()
+        } else {
+            // Game Mode turned off — wait before releasing Turbo. If Game Mode comes back
+            // on within the window (loading screen, round transition), we cancel and hold.
+            gameModeOffTask?.cancel()
+            gameModeOffTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await Task.sleep(for: Self.gameModeOffDelay)
+                } catch {
+                    return  // cancelled — game mode came back on, do nothing
+                }
+                await MainActor.run {
+                    self.gameModeOn = false
+                    self.recomputeGameTurbo()
+                }
+            }
+        }
     }
 
     /// Engages/releases the Turbo override from the current Game Mode + setting state.

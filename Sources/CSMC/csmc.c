@@ -93,15 +93,17 @@ int csmc_read(unsigned int conn, uint32_t key,
 int csmc_write(unsigned int conn, uint32_t key, uint32_t size, const uint8_t *bytes) {
     if (size > 32) return -1;
 
-    // Validate the key exists and learn its expected data size (the kernel rejects writes
-    // whose dataSize doesn't match the key's). We keep the caller-supplied byte count but
-    // bail if the key can't be queried.
+    // Query the key so we can confirm it exists and that the caller's byte count matches the
+    // key's actual dataSize. The kernel rejects writes whose size doesn't match, and a mismatch
+    // means the value was encoded for the wrong type — refuse it here rather than poke the SMC
+    // with a malformed write.
     SMCParamStruct in, out;
     memset(&in, 0, sizeof(in));
     memset(&out, 0, sizeof(out));
     in.key = key;
     in.data8 = kSMCGetKeyInfo;
     if (smc_call(conn, &in, &out) != kIOReturnSuccess || out.result != 0) return -1;
+    if (out.keyInfo.dataSize != size) return -1;
 
     memset(&in, 0, sizeof(in));
     memset(&out, 0, sizeof(out));

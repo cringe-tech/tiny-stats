@@ -57,7 +57,7 @@ public struct FanControlStatus: Equatable, Sendable {
 
 /// Confined to `queue` (SMC + XPC), like `MetricsEngine`; status is published on the main actor.
 public final class FanController: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.tinystats.fancontrol", qos: .utility)
+    private let queue = DispatchQueue(label: "com.cringetech.tinystats.fancontrol", qos: .utility)
     private let sensors = SMCSensors()
     private var smc: SMCConnection?
     private var xpc: NSXPCConnection?
@@ -200,9 +200,9 @@ public final class FanController: @unchecked Sendable {
             return
         }
         guard let t = temp else {
-            // No temperature reading — don't guess; release to system.
-            proxy.setAutoAll { _ in }
-            status.appliedPercent = nil
+            // Transient sensor read failure (common under heavy load). Don't touch the fans —
+            // hold whatever target was last sent. The helper's heartbeat watchdog will revert
+            // to auto if readings are absent for longer than watchdogSeconds.
             return
         }
         let percent = curve.percent(atTemp: t)

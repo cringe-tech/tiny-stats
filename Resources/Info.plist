@@ -7,7 +7,7 @@
     <key>CFBundleDisplayName</key>
     <string>tiny-stats</string>
     <key>CFBundleIdentifier</key>
-    <string>com.tinystats.app</string>
+    <string>com.cringetech.tinystats.app</string>
     <key>CFBundleExecutable</key>
     <string>TinyStats</string>
     <key>CFBundleIconFile</key>

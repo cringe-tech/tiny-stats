@@ -13,7 +13,7 @@ public enum HelperError: Error, Equatable {
 }
 
 public enum HelperInstaller {
-    public static let daemonLabel = FanHelper.machServiceName        // "com.tinystats.fanhelper"
+    public static let daemonLabel = FanHelper.machServiceName        // "com.cringetech.tinystats.fanhelper"
     static let plistPath = "/Library/LaunchDaemons/\(FanHelper.machServiceName).plist"
     static let installDir = "/Library/Application Support/TinyStats"
     static let installedHelperPath = "/Library/Application Support/TinyStats/fanhelper"
