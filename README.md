@@ -59,8 +59,10 @@ light on CPU and battery. Open source (MIT).
   <tr>
     <td><img src="docs/screenshots/settings_general.png" alt="General"></td>
     <td><img src="docs/screenshots/settings_menubar.png" alt="Menu Bar"></td>
+  </tr>
+  <tr>
     <td><img src="docs/screenshots/settings_panels.png" alt="Panels"></td>
-    <td><img src="docs/screenshots/settings_fans1.png" alt="Fan Control"></td>
+    <td><img src="docs/screenshots/settings_fans2.png" alt="Fan Control"></td>
   </tr>
 </table>
 
