@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import SwiftUI
 import ServiceManagement
 import TinyStatsCore
@@ -242,22 +243,23 @@ struct MetricSample: Identifiable {
 /// Owns the metrics engine, the applied settings, and recorded history. Drives the
 /// engine's interval adaptively from power state and popover visibility.
 @MainActor
-final class AppState: ObservableObject {
-    @Published var snapshot = MetricsSnapshot()
-    @Published private(set) var settings: AppSettings
-    @Published private(set) var history: [MetricSample] = []
-    @Published private(set) var updateStatus: UpdateStatus = .idle
+@Observable
+final class AppState {
+    var snapshot = MetricsSnapshot()
+    private(set) var settings: AppSettings
+    private(set) var history: [MetricSample] = []
+    private(set) var updateStatus: UpdateStatus = .idle
     /// Leftmost menu-bar cells currently dropped because they don't fit beside the notch.
-    @Published private(set) var menuBarHiddenCount = 0
+    private(set) var menuBarHiddenCount = 0
     /// Whether macOS Low Power Mode is currently on (shown on the cells, Overview and History).
-    @Published private(set) var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+    private(set) var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
     /// Live fan-control status (helper installed/responding, per-fan RPM, source temp, conflicts).
-    @Published private(set) var fanStatus = FanControlStatus()
+    private(set) var fanStatus = FanControlStatus()
     /// Dark/light of the *menu bar* (which can differ from the system appearance — e.g. a dark
-    /// wallpaper in Light Mode), so the rasterised cells are tinted to match. Published rather
+    /// wallpaper in Light Mode), so the rasterised cells are tinted to match. Tracked rather
     /// than read at render time: at launch the status-item window isn't in `NSApp.windows` yet,
     /// so an in-place read falls back to the system appearance and the text renders black.
-    @Published private(set) var menuBarIsDark = AppState.readMenuBarIsDark()
+    private(set) var menuBarIsDark = AppState.readMenuBarIsDark()
     private var lastUpdateCheck: Date?
 
     private let engine = MetricsEngine()
@@ -365,7 +367,7 @@ final class AppState: ObservableObject {
 
     /// True while the game-Turbo override is engaged (macOS Game Mode is on and the option is on)
     /// — published so the UI can show it, and read by `fanControlConfig`.
-    @Published private(set) var fanGameTurboActive = false
+    private(set) var fanGameTurboActive = false
     private var gameMode: GameModeMonitor?
     private var gameModeOn = false
     /// Pending deactivation of game-turbo: we debounce the OFF signal so a brief Game Mode
@@ -514,10 +516,14 @@ final class AppState: ObservableObject {
     }
 
     /// Reads whether the menu bar is currently dark from the status-item window (falling back to
-    /// the app appearance before that window exists).
+    /// the app appearance before that window exists). Guards against a not-yet-ready `NSApp`
+    /// (`NSApplication!`): as an `@Observable` model, `AppState` is created eagerly in
+    /// `TinyStatsApp.init()`, before `NSApplication.shared` is set up — the `for delay` retry loop
+    /// in `init` re-reads the appearance once the status-item window exists.
     private static func readMenuBarIsDark() -> Bool {
-        let window = NSApp.windows.first { String(describing: type(of: $0)) == "NSStatusBarWindow" }
-        let appearance = window?.effectiveAppearance ?? NSApp.effectiveAppearance
+        guard let app = NSApp else { return false }
+        let window = app.windows.first { String(describing: type(of: $0)) == "NSStatusBarWindow" }
+        let appearance = window?.effectiveAppearance ?? app.effectiveAppearance
         return appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
 

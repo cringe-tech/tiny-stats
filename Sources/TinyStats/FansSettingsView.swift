@@ -4,7 +4,7 @@ import TinyStatsCore
 /// Settings → Fans. Enables fan control (installing the privileged helper on first use behind a
 /// risk disclaimer), picks a preset/curve and the driving sensor, and shows live fan state.
 struct FansSettingsView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     @State private var showDisclaimer = false
     @State private var working = false
     @State private var errorText: String?

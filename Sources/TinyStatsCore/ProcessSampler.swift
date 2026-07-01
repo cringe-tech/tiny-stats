@@ -11,6 +11,10 @@ final class ProcessSampler {
     }
     private var previous: [Int32: Prev] = [:]
     private var lastTime: Date?
+    /// pid → process name. A name is fixed for a process's lifetime, so resolve it once and reuse
+    /// it — a fresh `proc_name` syscall per process per tick is otherwise (with `rusage`) the
+    /// sampler's dominant cost. Pruned to the live pids each sample so it can't grow unbounded.
+    private var nameCache: [Int32: String] = [:]
 
     func sample() -> [ProcessUsage] {
         let pids = Self.allPIDs()
@@ -39,15 +43,27 @@ final class ProcessSampler {
                 diskRate = diskDelta / seconds
             }
 
+            let name: String
+            if let cached = nameCache[pid] {
+                name = cached
+            } else {
+                name = Self.name(pid)
+                nameCache[pid] = name
+            }
+
             result.append(ProcessUsage(
                 id: pid,
-                name: Self.name(pid),
+                name: name,
                 cpu: cpu,
                 memoryBytes: info.ri_phys_footprint,
                 diskBytesPerSec: diskRate))
         }
 
         previous = current
+        // Drop names of processes that have exited so the cache tracks only live pids.
+        if nameCache.count > current.count {
+            nameCache = nameCache.filter { current[$0.key] != nil }
+        }
         return result
     }
 
@@ -64,12 +80,15 @@ final class ProcessSampler {
     }
 
     private static func rusage(_ pid: Int32) -> rusage_info_v4? {
-        let buffer = UnsafeMutablePointer<rusage_info_v4>.allocate(capacity: 1)
-        defer { buffer.deallocate() }
-        let rc = buffer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
-            proc_pid_rusage(pid, RUSAGE_INFO_V4, $0)
+        // Stack-allocated (this is called once per process every sample — hundreds of times — so
+        // a heap allocate/deallocate per call was pure churn).
+        var info = rusage_info_v4()
+        let rc = withUnsafeMutablePointer(to: &info) { buffer in
+            buffer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                proc_pid_rusage(pid, RUSAGE_INFO_V4, $0)
+            }
         }
-        return rc == 0 ? buffer.pointee : nil
+        return rc == 0 ? info : nil
     }
 
     private static func name(_ pid: Int32) -> String {

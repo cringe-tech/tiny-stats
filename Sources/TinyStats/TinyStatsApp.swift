@@ -2,12 +2,12 @@ import SwiftUI
 
 @main
 struct TinyStatsApp: App {
-    @StateObject private var state = AppState()
+    @State private var state = AppState()
 
     var body: some Scene {
         MenuBarExtra {
             PopoverView()
-                .environmentObject(state)
+                .environment(state)
         } label: {
             MenuBarLabel(snapshot: state.snapshot,
                          metrics: state.settings.barMetrics,
@@ -21,7 +21,7 @@ struct TinyStatsApp: App {
 
         Window("tiny-stats Settings", id: SettingsWindow.id) {
             SettingsView()
-                .environmentObject(state)
+                .environment(state)
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)

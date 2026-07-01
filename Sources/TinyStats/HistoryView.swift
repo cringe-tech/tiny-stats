@@ -43,11 +43,31 @@ struct HistoryView: View {
     }
 
     /// Exact x-domain so charts fill the full width (Swift Charts otherwise pads the
-    /// quantitative axis toward "nice" bounds, pushing data to the right).
+    /// quantitative axis toward "nice" bounds, pushing data to the right). Derived from the full
+    /// history (not the decimated set) so the axis is unaffected by downsampling.
     private var idDomain: ClosedRange<Int> {
         let lo = samples.first?.id ?? 0
         let hi = samples.last?.id ?? lo
         return lo...max(hi, lo + 1)
+    }
+
+    /// Cap on the points fed to Swift Charts. At long retention / fast intervals raw history can
+    /// reach thousands of samples, and rebuilding every chart over all of them each tick is the
+    /// heaviest on-screen cost. A few hundred points is indistinguishable at this chart size.
+    private static let maxChartPoints = 400
+
+    /// History decimated for plotting: strided down to `maxChartPoints`, always keeping the first
+    /// and last sample so the x-domain and the live "now" edge stay exact.
+    private var displaySamples: [MetricSample] {
+        let n = samples.count
+        guard n > Self.maxChartPoints else { return samples }
+        let step = Int((Double(n) / Double(Self.maxChartPoints)).rounded(.up))
+        var out: [MetricSample] = []
+        out.reserveCapacity(n / step + 2)
+        var i = 0
+        while i < n { out.append(samples[i]); i += step }
+        if let last = samples.last, out.last?.id != last.id { out.append(last) }
+        return out
     }
 
     /// Human label for the time window the charts currently cover.
@@ -66,10 +86,10 @@ struct HistoryView: View {
             switch section {
             case .network:
                 networkHeader
-                NetworkChart(samples: samples, domain: idDomain).frame(height: 80)
+                NetworkChart(samples: displaySamples, domain: idDomain).frame(height: 80)
             case .disk:
                 diskHeader
-                DiskChart(samples: samples, domain: idDomain).frame(height: 80)
+                DiskChart(samples: displaySamples, domain: idDomain).frame(height: 80)
             case .battery:
                 SectionHeaderRow(symbol: section.symbol, title: section.label,
                                  value: currentValue(section),
@@ -122,7 +142,7 @@ struct HistoryView: View {
 
     @ViewBuilder
     private func simpleChart(_ section: OverviewSection) -> some View {
-        Chart(samples) { sample in
+        Chart(displaySamples) { sample in
             AreaMark(x: .value("t", sample.id), y: .value("v", sampleValue(sample, section)))
                 .foregroundStyle(section.tint.opacity(0.15))
                 .interpolationMethod(.monotone)
@@ -155,6 +175,7 @@ struct HistoryView: View {
     /// continuous line and one continuous area, so the whole metric is a single mark — no extra
     /// series to stack into spikes, and no gaps. The data is continuous; only the colour changes.
     private func batteryGradient(opacity: Double) -> LinearGradient {
+        let samples = displaySamples   // match the plotted (decimated) points
         func color(_ s: MetricSample) -> Color { (s.lowPower ? .yellow : Palette.battery).opacity(opacity) }
         guard let first = samples.first, let last = samples.last else {
             return LinearGradient(colors: [Palette.battery.opacity(opacity)],
@@ -173,6 +194,7 @@ struct HistoryView: View {
 
     @ViewBuilder
     private var batteryChart: some View {
+        let samples = displaySamples
         Chart {
             ForEach(samples) { s in
                 AreaMark(x: .value("t", s.id), y: .value("v", s.battery))

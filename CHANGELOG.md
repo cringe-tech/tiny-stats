@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-07-01
+
+### Performance
+- Reworked the UI's state model to Swift's `@Observable` so a metrics tick only re-renders the
+  views that read the changed value, instead of rebuilding the whole popover and Settings window
+  every 1–2 s. Fixes the lag when opening Settings or the dropdown panel.
+- The Settings menu-bar preview is now its own view, so the live cells update without rebuilding
+  the rest of the window.
+- `MenuBarFit` memoises its `ImageRenderer` width measurements (keyed on a width-equivalent
+  signature), cutting redundant main-thread rasterisation on every tick.
+- Process sampling resolves each process name once and caches it (was a `proc_name` syscall per
+  process per tick), and reads `rusage` into a stack buffer instead of a per-process heap
+  allocation — noticeably less energy use while the Overview panel is open.
+- History charts downsample to a few hundred points before plotting, so long retention windows
+  no longer rebuild thousands of points per tick.
+
+### Fixed
+- Hardened the menu-bar appearance read against a not-yet-ready `NSApp` at launch.
+
 ## [0.2.0] — 2026-06-29
 
 ### Added

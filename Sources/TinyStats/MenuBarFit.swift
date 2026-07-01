@@ -157,13 +157,26 @@ final class MenuBarFit {
         String(describing: type(of: window)) == "NSStatusBarWindow"
     }
 
+    /// Rasterising a SwiftUI view via `ImageRenderer` is expensive and `hiddenCount` measures
+    /// several candidate widths per call — many of them identical across ticks (idle values) or
+    /// even within a single call. Memoise on a signature that fully determines the render, so a
+    /// repeat is a dictionary hit instead of another rasterisation. Keyed exactly, so it can never
+    /// return a stale width; capped so it stays bounded.
+    private var widthCache: [String: CGFloat] = [:]
+
     /// Point width of the rendered cells (matching `MenuBarLabel`'s own rendering exactly).
     private func measuredWidth(_ metrics: [BarMetric], snapshot: MetricsSnapshot,
                                mode: BarValueMode, display: BarDisplayMode, ellipsis: Bool) -> CGFloat {
+        let key = BarLabelView.widthSignature(metrics: metrics, snapshot: snapshot,
+                                              mode: mode, display: display, leadingEllipsis: ellipsis)
+        if let cached = widthCache[key] { return cached }
         let renderer = ImageRenderer(content:
             BarLabelView(snapshot: snapshot, metrics: metrics, mode: mode,
                          display: display, leadingEllipsis: ellipsis)
                 .padding(.horizontal, 1))
-        return renderer.nsImage?.size.width ?? 0
+        let width = renderer.nsImage?.size.width ?? 0
+        if widthCache.count > 128 { widthCache.removeAll(keepingCapacity: true) }
+        widthCache[key] = width
+        return width
     }
 }

@@ -3,7 +3,7 @@ import AppKit
 import TinyStatsCore
 
 struct SettingsView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     @Environment(\.colorScheme) private var colorScheme
     @State private var dock = DockPresence()
 
@@ -18,7 +18,7 @@ struct SettingsView: View {
         TabView {   
             generalTab
                 .tabItem { Label(Loc.t(.general), systemImage: "gearshape") }
-            menuBarTab
+            MenuBarSettingsTab()
                 .tabItem { Label(Loc.t(.menuBar), systemImage: "menubar.rectangle") }
             panelsTab
                 .tabItem { Label(Loc.t(.panels), systemImage: "rectangle.3.group") }
@@ -106,47 +106,6 @@ struct SettingsView: View {
         .background(FocusClearer())
     }
 
-    // MARK: Menu Bar tab
-
-    private var menuBarTab: some View {
-        Form {
-            Section(Loc.t(.preview)) {
-                previewBar
-                if state.menuBarHiddenCount > 0 {
-                    Label(Loc.t(.cellsHidden, "\(state.menuBarHiddenCount)"), systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-            }
-            Section(Loc.t(.menuBarCells)) {
-                MenuBarArrangementView(metrics: state.binding(\.barMetrics))
-            }
-            Section(Loc.t(.defaultSet)) {
-                HStack {
-                    BarLabelView(snapshot: state.snapshot, metrics: defaultBarMetrics,
-                                 mode: state.settings.barValueMode, display: .iconValue)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button(Loc.t(.useDefault)) {
-                        var s = state.settings
-                        s.barMetrics = defaultBarMetrics
-                        state.apply(s)
-                    }
-                    .disabled(state.settings.barMetrics == defaultBarMetrics)
-                }
-            }
-            Section(Loc.t(.show)) {
-                Picker(Loc.t(.cellsShow), selection: state.binding(\.barDisplayMode)) {
-                    ForEach(BarDisplayMode.allCases) { Text($0.label).tag($0) }
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .hideScrollers()
-    }
-
     // MARK: Panels tab
 
     private var panelsTab: some View {
@@ -179,8 +138,6 @@ struct SettingsView: View {
 
     // MARK: Pieces
 
-    private let defaultBarMetrics: [BarMetric] = [.cpu, .memory, .network]
-
     private var retentionBinding: Binding<HistoryRetention> {
         Binding(
             get: { HistoryRetention(rawValue: state.settings.historyRetentionMinutes) ?? .m15 },
@@ -190,21 +147,6 @@ struct SettingsView: View {
                 state.apply(s)
             }
         )
-    }
-
-    private var previewBar: some View {
-        HStack {
-            Spacer()
-            BarLabelView(snapshot: state.snapshot,
-                         metrics: state.settings.barMetrics,
-                         mode: state.settings.barValueMode,
-                         display: state.settings.barDisplayMode)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
-            Spacer()
-        }
-        .padding(.vertical, 4)
     }
 
     private var aboutContent: some View {
@@ -327,6 +269,69 @@ struct SettingsView: View {
     }
 
     private static let logo: NSImage? = resourceImage("tinystats")
+}
+
+/// Settings → Menu Bar. Split into its own view (rather than a computed property of
+/// `SettingsView`) so the live preview bar — which reads `snapshot`/`menuBarHiddenCount` and
+/// thus updates every polling tick — invalidates only this subview, not the whole window.
+private struct MenuBarSettingsTab: View {
+    @Environment(AppState.self) private var state
+
+    private let defaultBarMetrics: [BarMetric] = [.cpu, .memory, .network]
+
+    var body: some View {
+        Form {
+            Section(Loc.t(.preview)) {
+                previewBar
+                if state.menuBarHiddenCount > 0 {
+                    Label(Loc.t(.cellsHidden, "\(state.menuBarHiddenCount)"), systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+            }
+            Section(Loc.t(.menuBarCells)) {
+                MenuBarArrangementView(metrics: state.binding(\.barMetrics))
+            }
+            Section(Loc.t(.defaultSet)) {
+                HStack {
+                    BarLabelView(snapshot: state.snapshot, metrics: defaultBarMetrics,
+                                 mode: state.settings.barValueMode, display: .iconValue)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button(Loc.t(.useDefault)) {
+                        var s = state.settings
+                        s.barMetrics = defaultBarMetrics
+                        state.apply(s)
+                    }
+                    .disabled(state.settings.barMetrics == defaultBarMetrics)
+                }
+            }
+            Section(Loc.t(.show)) {
+                Picker(Loc.t(.cellsShow), selection: state.binding(\.barDisplayMode)) {
+                    ForEach(BarDisplayMode.allCases) { Text($0.label).tag($0) }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .hideScrollers()
+    }
+
+    private var previewBar: some View {
+        HStack {
+            Spacer()
+            BarLabelView(snapshot: state.snapshot,
+                         metrics: state.settings.barMetrics,
+                         mode: state.settings.barValueMode,
+                         display: state.settings.barDisplayMode)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
 }
 
 /// Gives the Settings window a Dock icon + cmd-tab presence while it's open, then removes it
@@ -668,7 +673,7 @@ extension View {
 private struct SectionsArrangementView: View {
     private enum ZoneID: String { case active, hidden }
 
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     @State private var dragging: OverviewSection?
     @State private var dragPoint: CGPoint = .zero
     @State private var targetZone: ZoneID?

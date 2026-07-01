@@ -79,6 +79,14 @@ struct BarLabelView: View {
     }
 
     private func text(_ metric: BarMetric) -> String {
+        Self.valueText(for: metric, snapshot: snapshot, mode: mode)
+    }
+
+    private func batterySymbol(_ charge: Double) -> String { Self.batterySymbol(charge) }
+
+    /// The value string a cell renders, exposed statically so `MenuBarFit` can build a width
+    /// signature from the same source of truth (see `widthSignature`).
+    static func valueText(for metric: BarMetric, snapshot: MetricsSnapshot, mode: BarValueMode) -> String {
         switch metric {
         case .cpu: return Format.percent(snapshot.cpu.total)
         case .gpu: return Format.percent(snapshot.gpu.utilization)
@@ -95,7 +103,7 @@ struct BarLabelView: View {
         }
     }
 
-    private func batterySymbol(_ charge: Double) -> String {
+    static func batterySymbol(_ charge: Double) -> String {
         switch charge {
         case ..<0.13: return "battery.0"
         case ..<0.38: return "battery.25"
@@ -105,15 +113,47 @@ struct BarLabelView: View {
         }
     }
 
-    private func compactBytes(_ bytes: UInt64) -> String {
+    private static func compactBytes(_ bytes: UInt64) -> String {
         let gb = Double(bytes) / 1_073_741_824
         return String(format: "%.1fG", gb)
     }
 
-    private func compactRate(_ bytesPerSec: Double) -> String {
+    private static func compactRate(_ bytesPerSec: Double) -> String {
         let kb = bytesPerSec / 1024
         if kb < 1000 { return "\(Int(kb))K" }
         return String(format: "%.1fM", kb / 1024)
+    }
+
+    /// Everything that affects the rendered *width*, as a string. Identical signatures imply an
+    /// identical render, so `MenuBarFit` can memoise its `ImageRenderer` width measurement on it.
+    /// Kept next to the render logic so the two stay in sync. Note `lowPower` only re-tints the
+    /// battery cell (palette vs template) without changing geometry, so it is intentionally left
+    /// out — the bolt overlay depends on `isPluggedIn`, and the charge glyph on the bucket, both
+    /// of which are included.
+    static func widthSignature(metrics: [BarMetric], snapshot: MetricsSnapshot,
+                               mode: BarValueMode, display: BarDisplayMode,
+                               leadingEllipsis: Bool) -> String {
+        var parts: [String] = ["\(mode.rawValue)|\(display.rawValue)|\(leadingEllipsis ? "e" : "")"]
+        for metric in (metrics.isEmpty ? [.cpu] : metrics) {
+            var p = metric.rawValue
+            if display.showsIcon, metric == .battery {
+                let b = snapshot.battery
+                p += "/" + batterySymbol(b?.charge ?? 0) + (b?.isPluggedIn == true ? "P" : "")
+            }
+            if display.showsLabel { p += ":" + metric.label }
+            if display.showsValue {
+                // The value renders with `.monospacedDigit()`, so all digits share one advance
+                // width — collapse them to a single canonical digit so "45%" and "47%" (identical
+                // width) share a cache key instead of each forcing a fresh rasterisation.
+                p += "=" + canonicalDigits(valueText(for: metric, snapshot: snapshot, mode: mode))
+            }
+            parts.append(p)
+        }
+        return parts.joined(separator: ",")
+    }
+
+    private static func canonicalDigits(_ s: String) -> String {
+        String(s.map { $0.isNumber ? "0" : $0 })
     }
 }
 

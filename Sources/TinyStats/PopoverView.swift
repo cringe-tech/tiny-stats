@@ -18,7 +18,7 @@ enum PopoverTab: String, CaseIterable, Identifiable {
 }
 
 struct PopoverView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     @Environment(\.openWindow) private var openWindow
     @State private var tab: PopoverTab = .overview
     @State private var hoveredTab: PopoverTab?
