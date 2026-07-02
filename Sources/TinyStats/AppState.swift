@@ -454,9 +454,11 @@ final class AppState {
     /// child of the app because the cask's `uninstall quit:` would kill the app — and the
     /// upgrade with it — mid-run. A standalone Terminal session survives the app quitting.
     func updateViaHomebrew() {
-        // Relaunch the freshly-installed copy at the same path we're running from (the cask
-        // quit us mid-upgrade). installedViaHomebrew already guarantees this is under /Applications.
+        // Relaunch the freshly-installed copy at the same path we're running from.
+        // installedViaHomebrew already guarantees this is under /Applications.
         let appPath = Bundle.main.bundlePath
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.cringetech.tinystats.app"
+        let exe = Bundle.main.executableURL?.lastPathComponent ?? "TinyStats"
         let script = """
         #!/bin/bash
         echo "Updating TinyStats via Homebrew…"
@@ -466,6 +468,14 @@ final class AppState {
         echo
         if [ $status -eq 0 ]; then
             echo "Done — relaunching TinyStats."
+            # `open` only re-activates an already-running instance — it will NOT start the freshly
+            # installed binary while the old copy is still alive. brew's `uninstall quit:` usually
+            # quits us, but don't rely on it: make sure every instance is gone before relaunching,
+            # otherwise the update lands on disk but the old version keeps running.
+            osascript -e 'tell application id "\(bundleID)" to quit' >/dev/null 2>&1
+            for _ in $(seq 1 20); do pgrep -x "\(exe)" >/dev/null 2>&1 || break; sleep 0.25; done
+            pkill -x "\(exe)" >/dev/null 2>&1
+            sleep 0.3
             open "\(appPath)"
             echo "You can close this window."
         else

@@ -78,11 +78,15 @@ struct PopoverView: View {
         state.settings.showHistoryTab ? PopoverTab.allCases : [.overview, .sensors]
     }
 
-    /// Make the popover panel key shortly after it appears — a tiny delay lets it finish
-    /// presenting, otherwise `makeKey()` runs before the window is on screen and is ignored.
-    private func makeKeySoon() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            hostWindow?.makeKey()
+    /// Make the popover panel key shortly after it appears. `makeKey()` is ignored while the
+    /// window is still presenting, and a single fixed delay can land in that gap on slower
+    /// frames — leaving the panel non-key so the first click on any control is swallowed to
+    /// focus the window. Retry until the panel is actually key (bounded so we never spin).
+    private func makeKeySoon(attempt: Int = 0) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            guard let window = hostWindow, !window.isKeyWindow else { return }
+            window.makeKey()
+            if !window.isKeyWindow, attempt < 6 { makeKeySoon(attempt: attempt + 1) }
         }
     }
 

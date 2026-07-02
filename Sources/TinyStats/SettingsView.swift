@@ -392,6 +392,7 @@ private struct MenuBarArrangementView: View {
     @Binding var metrics: [BarMetric]
     @State private var dragging: BarMetric?
     @State private var dragPoint: CGPoint = .zero
+    @State private var grabOffset: CGSize?
     @State private var targetZone: ZoneID?
     @State private var targetIndex = 0
     @State private var frames: [String: CGRect] = [:]
@@ -497,50 +498,59 @@ private struct MenuBarArrangementView: View {
         }
     }
 
-    // MARK: Gesture (model is committed only on release, so the dragged tile never
-    // moves mid-drag and the gesture can't be cancelled out from under itself)
+    // MARK: Gesture — native macOS reorder: no long-press, the drag starts as soon as the
+    // mouse moves a few points with the button down; a motionless click stays a click and
+    // falls through to onTapGesture. Model is committed only on release, so the dragged tile
+    // stays put and the gesture is never cancelled by a mid-drag relayout.
 
     private func dragGesture(_ metric: BarMetric) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.16)
-            .sequenced(before: DragGesture(coordinateSpace: .named(space)))
-            .onChanged { value in
-                guard case .second(true, let drag) = value else { return }
+        DragGesture(minimumDistance: 3, coordinateSpace: .named(space))
+            .onChanged { drag in
                 if dragging == nil {
                     dragging = metric
-                    if let f = frames[metric.rawValue] { dragPoint = CGPoint(x: f.midX, y: f.midY) }
+                    // Pin the tile to where it was grabbed instead of snapping its
+                    // center under the cursor.
+                    if let f = frames[metric.rawValue] {
+                        grabOffset = CGSize(width: f.midX - drag.startLocation.x,
+                                            height: f.midY - drag.startLocation.y)
+                    }
+                    NSCursor.closedHand.push()
                 }
-                if let drag {
-                    dragPoint = drag.location
-                    updateTarget(to: drag.location)
-                }
+                let off = grabOffset ?? .zero
+                dragPoint = CGPoint(x: drag.location.x + off.width, y: drag.location.y + off.height)
+                updateTarget(to: drag.location)
             }
-            .onEnded { _ in endReorder() }
+            .onEnded { _ in
+                NSCursor.pop()
+                endReorder()
+            }
     }
 
     /// Track the prospective drop (zone + insertion index) without touching the model.
     private func updateTarget(to point: CGPoint) {
         guard let dragged = dragging else { return }
-        if zone(at: point) == .available {
-            targetZone = .available
-            targetIndex = 0
-        } else {
-            targetZone = .inBar
-            targetIndex = flowIndex(point, items: metrics.filter { $0 != dragged })
-        }
+        let z: ZoneID = zone(at: point)
+        let index = z == .available ? 0 : flowIndex(point, items: metrics.filter { $0 != dragged })
+        // Same subtle tick AppKit plays when a menu-bar icon snaps to a new slot.
+        if targetZone != z || targetIndex != index { Haptic.tick() }
+        targetZone = z
+        targetIndex = index
     }
 
     /// Glide the floating tile to its slot, then commit the move and clear the drag.
     private func endReorder() {
         guard let dragged = dragging, let tz = targetZone else { reset(); return }
         let index = targetIndex
-        withAnimation(.snappy(duration: 0.18)) { dragPoint = dropAnchor(tz, index) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+        // Glide to the slot, and only swap the floating tile for the real row once the glide
+        // has settled (delay == duration) so the landing reads as one smooth motion.
+        withAnimation(.snappy(duration: 0.2)) { dragPoint = dropAnchor(tz, index) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             commit(dragged, to: tz, at: index)
             reset()
         }
     }
 
-    private func reset() { dragging = nil; targetZone = nil }
+    private func reset() { dragging = nil; targetZone = nil; grabOffset = nil }
 
     private func commit(_ metric: BarMetric, to z: ZoneID, at index: Int) {
         var new = metrics.filter { $0 != metric }
@@ -676,6 +686,7 @@ private struct SectionsArrangementView: View {
     @Environment(AppState.self) private var state
     @State private var dragging: OverviewSection?
     @State private var dragPoint: CGPoint = .zero
+    @State private var grabOffset: CGSize?
     @State private var targetZone: ZoneID?
     @State private var targetIndex = 0
     @State private var frames: [String: CGRect] = [:]
@@ -703,7 +714,6 @@ private struct SectionsArrangementView: View {
         }
         .coordinateSpace(name: space)
         .onPreferenceChange(ReorderFrames.self) { frames = $0 }
-        .overlay(alignment: .topLeading) { insertionIndicator }
         .overlay(alignment: .topLeading) { floating }
     }
 
@@ -718,16 +728,28 @@ private struct SectionsArrangementView: View {
                     .frame(maxWidth: .infinity, minHeight: dragging != nil ? 40 : 22)
             } else {
                 ForEach(items) { section in
-                    row(section, hidden: z == .hidden, hovered: hoveredSection == section && dragging == nil)
-                        .opacity(dragging == section ? 0 : 1)
-                        .reorderFrame(section.rawValue, in: space)
-                        .onHover { inside in
-                            let was = hoveredSection == section
-                            hoveredSection = inside ? section : (was ? nil : hoveredSection)
-                            if inside && !was && dragging == nil { Haptic.tick() }
-                        }
-                        .onTapGesture { toggleZone(section, from: z) }
-                        .gesture(dragGesture(section))
+                    // The clear probe keeps the measured slot fixed while the visible row is
+                    // shifted by `.offset` to open the drop gap — so hit-testing never chases
+                    // its own moving frames.
+                    ZStack {
+                        Color.clear
+                            .frame(height: rowHeight)
+                            .frame(maxWidth: .infinity)
+                            .reorderFrame(section.rawValue, in: space)
+                        row(section, hidden: z == .hidden, hovered: hoveredSection == section && dragging == nil)
+                            .opacity(dragging == section ? 0 : 1)
+                            .offset(y: dropShift(section, zone: z))
+                    }
+                    .onHover { inside in
+                        let was = hoveredSection == section
+                        hoveredSection = inside ? section : (was ? nil : hoveredSection)
+                        if inside && !was && dragging == nil { Haptic.tick() }
+                    }
+                    .onTapGesture { toggleZone(section, from: z) }
+                    .gesture(dragGesture(section))
+                    .animation(.snappy(duration: 0.22), value: targetIndex)
+                    .animation(.snappy(duration: 0.22), value: targetZone)
+                    .animation(.snappy(duration: 0.22), value: dragging)
                 }
             }
         }
@@ -751,37 +773,32 @@ private struct SectionsArrangementView: View {
         }
     }
 
-    /// Accent line marking where the row will land.
-    @ViewBuilder
-    private var insertionIndicator: some View {
-        if dragging != nil, let z = targetZone {
-            let zf = zoneFrame(z)
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(Color.accentColor)
-                .frame(width: max(40, zf.width - 16), height: 3)
-                .position(x: zf.midX, y: indicatorY(z, targetIndex))
-                .allowsHitTesting(false)
-        }
-    }
-
-    // MARK: Gesture (model committed only on release → dragged row stays put → the
-    // long-press/drag sequence is never cancelled by a mid-drag relayout)
+    // MARK: Gesture — native macOS reorder: no long-press, the drag starts as soon as the
+    // mouse moves a few points with the button down; a motionless click stays a click and
+    // falls through to onTapGesture. Model is committed only on release, so the dragged row
+    // stays put and the gesture is never cancelled by a mid-drag relayout.
 
     private func dragGesture(_ section: OverviewSection) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.16)
-            .sequenced(before: DragGesture(coordinateSpace: .named(space)))
-            .onChanged { value in
-                guard case .second(true, let drag) = value else { return }
+        DragGesture(minimumDistance: 3, coordinateSpace: .named(space))
+            .onChanged { drag in
                 if dragging == nil {
                     dragging = section
-                    if let f = frames[section.rawValue] { dragPoint = CGPoint(x: f.midX, y: f.midY) }
+                    // Pin the row to where it was grabbed instead of snapping its
+                    // center under the cursor.
+                    if let f = frames[section.rawValue] {
+                        grabOffset = CGSize(width: f.midX - drag.startLocation.x,
+                                            height: f.midY - drag.startLocation.y)
+                    }
+                    NSCursor.closedHand.push()
                 }
-                if let drag {
-                    dragPoint = drag.location
-                    updateTarget(to: drag.location)
-                }
+                let off = grabOffset ?? .zero
+                dragPoint = CGPoint(x: drag.location.x + off.width, y: drag.location.y + off.height)
+                updateTarget(to: drag.location)
             }
-            .onEnded { _ in endReorder() }
+            .onEnded { _ in
+                NSCursor.pop()
+                endReorder()
+            }
     }
 
     /// Track the prospective drop (zone + insertion index) without touching the model.
@@ -791,22 +808,27 @@ private struct SectionsArrangementView: View {
         // Never hide the last remaining active metric.
         if z == .hidden && active.filter({ $0 != dragged }).isEmpty { z = .active }
         let others = (z == .active ? active : inactive).filter { $0 != dragged }
+        let index = others.filter { (frames[$0.rawValue]?.midY ?? 0) < point.y }.count
+        // Same subtle tick AppKit plays when a menu-bar icon snaps to a new slot.
+        if targetZone != z || targetIndex != index { Haptic.tick() }
         targetZone = z
-        targetIndex = others.filter { (frames[$0.rawValue]?.midY ?? 0) < point.y }.count
+        targetIndex = index
     }
 
     /// Glide the floating row to its slot, then commit the move and clear the drag.
     private func endReorder() {
         guard let dragged = dragging, let tz = targetZone else { reset(); return }
         let index = targetIndex
-        withAnimation(.snappy(duration: 0.18)) { dragPoint.y = indicatorY(tz, index) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+        // Glide to the slot, and only swap the floating row for the real one once the glide
+        // has settled (delay == duration) so the landing reads as one smooth motion.
+        withAnimation(.snappy(duration: 0.2)) { dragPoint.y = indicatorY(tz, index) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             commit(dragged, to: tz, at: index)
             reset()
         }
     }
 
-    private func reset() { dragging = nil; targetZone = nil }
+    private func reset() { dragging = nil; targetZone = nil; grabOffset = nil }
 
     /// Click to send a metric to the opposite zone (append to the end there).
     private func toggleZone(_ section: OverviewSection, from z: ZoneID) {
@@ -841,6 +863,29 @@ private struct SectionsArrangementView: View {
         if index <= 0 { return rows[0].minY - 3 }
         if index >= rows.count { return rows[rows.count - 1].maxY + 3 }
         return (rows[index - 1].maxY + rows[index].minY) / 2
+    }
+
+    /// Vertical shift applied to a row so the list visibly opens a gap at the drop slot — and,
+    /// for an in-zone reorder, closes the gap the lifted row left so a single gap tracks the
+    /// cursor. Across zones the source keeps its placeholder gap.
+    private func dropShift(_ section: OverviewSection, zone z: ZoneID) -> CGFloat {
+        guard let dragged = dragging, section != dragged else { return 0 }
+        let gap = (frames[dragged.rawValue]?.height ?? rowHeight) + 6
+        let originZone: ZoneID = active.contains(dragged) ? .active : .hidden
+        var shift: CGFloat = 0
+        if targetZone == originZone, z == originZone {
+            let list = z == .active ? active : inactive
+            if let di = list.firstIndex(of: dragged), let ri = list.firstIndex(of: section), ri > di {
+                shift -= gap
+            }
+        }
+        if targetZone == z {
+            let list = (z == .active ? active : inactive).filter { $0 != dragged }
+            if let idx = list.firstIndex(of: section), idx >= targetIndex {
+                shift += gap
+            }
+        }
+        return shift
     }
 
     private func label(_ text: String) -> some View {
